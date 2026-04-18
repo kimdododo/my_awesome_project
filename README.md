@@ -133,6 +133,8 @@ src/
 - 배포 환경에서 사라지면 KV 연결 확인
 
 **빌드 에러**
+
+- Vercel에서 `No Output Directory named "public"` 이면, 프로젝트가 **Next가 아니라 정적 사이트**로 잡힌 경우입니다. **Settings → Build & Deployment**에서 **Framework Preset**을 **Next.js**로 두고, **Output Directory**는 **비우기**(Override 해제)하세요. 레포 루트의 `vercel.json`이 Next 빌드를 가리키도록 되어 있습니다.
 ```bash
 rm -rf node_modules .next
 npm install
