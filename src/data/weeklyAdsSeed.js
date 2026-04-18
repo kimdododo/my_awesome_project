@@ -1,0 +1,22 @@
+/** 주간 광고 집계 (엑셀 기준) — weekStart는 해당 주 월요일 */
+export const INITIAL_WEEKLY_AD_ROWS = [
+  { weekStart: '2025-12-01', weekLabel: '2025.12월 1주차', impressions: 18239, clicks: 174, adConversions: 1, ctr: 0.0181, cpc: 7862, cost: 1367929, convCarisAds: 4, convPhone: 1, convChannelTalk: 1, totalConversions: 7, cpa: 195418 },
+  { weekStart: '2025-12-08', weekLabel: '2025.12월 2주차', impressions: 16358, clicks: 191, adConversions: 4, ctr: 0.0188, cpc: 6408, cost: 1223904, convCarisAds: 3, convPhone: 1, convChannelTalk: 1, totalConversions: 9, cpa: 135989 },
+  { weekStart: '2025-12-15', weekLabel: '2025.12월 3주차', impressions: 13658, clicks: 170, adConversions: 3, ctr: 0.0167, cpc: 7540, cost: 1281719, convCarisAds: 2, convPhone: 0, convChannelTalk: 0, totalConversions: 5, cpa: 256344 },
+  { weekStart: '2025-12-22', weekLabel: '2025.12월 4주차', impressions: 7982, clicks: 153, adConversions: 4, ctr: 0.0213, cpc: 8263, cost: 1264301, convCarisAds: 2, convPhone: 0, convChannelTalk: 0, totalConversions: 6, cpa: 210717 },
+  { weekStart: '2025-12-29', weekLabel: '2025.12월 5주차', impressions: 8624, clicks: 129, adConversions: 3, ctr: 0.0208, cpc: 6417, cost: 827748, convCarisAds: 1, convPhone: 1, convChannelTalk: 1, totalConversions: 6, cpa: 137958 },
+  { weekStart: '2026-01-05', weekLabel: '2026.1월 1주차', impressions: 1778, clicks: 17, adConversions: 0, ctr: 0.0032, cpc: 5668, cost: 96353, convCarisAds: 2, convPhone: 1, convChannelTalk: 0, totalConversions: 3, cpa: 32118 },
+  { weekStart: '2026-01-12', weekLabel: '2026.1월 2주차', impressions: 7448, clicks: 213, adConversions: 5, ctr: 0.0273, cpc: 5874, cost: 1251110, convCarisAds: 3, convPhone: 0, convChannelTalk: 0, totalConversions: 8, cpa: 156389 },
+  { weekStart: '2026-01-19', weekLabel: '2026.1월 3주차', impressions: 11655, clicks: 194, adConversions: 6, ctr: 0.0214, cpc: 6209, cost: 1204593, convCarisAds: 4, convPhone: 1, convChannelTalk: 1, totalConversions: 12, cpa: 100383 },
+  { weekStart: '2026-01-26', weekLabel: '2026.1월 4주차', impressions: 15880, clicks: 155, adConversions: 2, ctr: 0.0136, cpc: 6996, cost: 1084374, convCarisAds: 2, convPhone: 0, convChannelTalk: 0, totalConversions: 4, cpa: 271094 },
+  { weekStart: '2026-02-02', weekLabel: '2026.2월 1주차', impressions: 12265, clicks: 136, adConversions: 3, ctr: 0.014, cpc: 7850, cost: 1067590, convCarisAds: 2, convPhone: 0, convChannelTalk: 0, totalConversions: 5, cpa: 213518 },
+  { weekStart: '2026-02-09', weekLabel: '2026.2월 2주차', impressions: 12814, clicks: 169, adConversions: 0, ctr: 0.0129, cpc: 6496, cost: 1097805, convCarisAds: 2, convPhone: 0, convChannelTalk: 0, totalConversions: 2, cpa: 548903 },
+  { weekStart: '2026-02-16', weekLabel: '2026.2월 3주차', impressions: 6053, clicks: 98, adConversions: 0, ctr: 0.0149, cpc: 5558, cost: 544731, convCarisAds: 1, convPhone: 0, convChannelTalk: 1, totalConversions: 2, cpa: 272366 },
+  { weekStart: '2026-02-23', weekLabel: '2026.2월 4주차', impressions: 11835, clicks: 95, adConversions: 3, ctr: 0.0181, cpc: 6783, cost: 644353, convCarisAds: 3, convPhone: 0, convChannelTalk: 2, totalConversions: 8, cpa: 80544 },
+  { weekStart: '2026-03-02', weekLabel: '2026.3월 1주차', impressions: 5137, clicks: 91, adConversions: 3, ctr: 0.018, cpc: 7039, cost: 640510, convCarisAds: 4, convPhone: 0, convChannelTalk: 1, totalConversions: 8, cpa: 80064 },
+  { weekStart: '2026-03-09', weekLabel: '2026.3월 2주차', impressions: 10609, clicks: 126, adConversions: 5, ctr: 0.0119, cpc: 7391, cost: 931289, convCarisAds: 5, convPhone: 0, convChannelTalk: 1, totalConversions: 11, cpa: 84663 },
+  { weekStart: '2026-03-16', weekLabel: '2026.3월 3주차', impressions: 11545, clicks: 142, adConversions: 0, ctr: 0.0117, cpc: 6108, cost: 867402, convCarisAds: 1, convPhone: 0, convChannelTalk: 0, totalConversions: 1, cpa: 867402 },
+  { weekStart: '2026-03-23', weekLabel: '2026.3월 4주차', impressions: 12569, clicks: 215, adConversions: 3, ctr: 0.0123, cpc: 8035, cost: 1727585, convCarisAds: 2, convPhone: 0, convChannelTalk: 1, totalConversions: 6, cpa: 287931 },
+  { weekStart: '2026-03-30', weekLabel: '2026.4월 1주차', impressions: 14260, clicks: 152, adConversions: 0, ctr: 0.011, cpc: 10116, cost: 1537606, convCarisAds: 1, convPhone: 1, convChannelTalk: 0, totalConversions: 2, cpa: 768803 },
+  { weekStart: '2026-04-06', weekLabel: '2026.4월 2주차', impressions: 7806, clicks: 132, adConversions: 3, ctr: 0.015, cpc: 10982, cost: 1449632, convCarisAds: 7, convPhone: 1, convChannelTalk: 0, totalConversions: 11, cpa: 131785 },
+];

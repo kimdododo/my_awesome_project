@@ -7,6 +7,8 @@ import {
 } from 'recharts';
 import { Plus, ArrowUpRight, ArrowDownRight, Minus, Mail, MessageCircle, Calendar, CheckCircle2, Circle, Search, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { SEED } from '../data/seed';
+import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
+import { parseWeeklyAdsPaste } from '../lib/weeklyAdsPaste';
 
 const BASE_DATE = new Date('2025-10-20T00:00:00');
 const TODAY = '2026-04-17';
@@ -38,6 +40,19 @@ const STAGES = [
   { id: 'won',     label: '성사',    color: '#10b981', bg: 'bg-emerald-100',  text: 'text-emerald-800' },
 ];
 const STAGE_MAP = Object.fromEntries(STAGES.map(s => [s.id, s]));
+const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
+
+/** beforeDateStr(해당 날 00:00) 이전까지의 히스토리만 재생 → 그 시점 단계 */
+function replayStageBeforeDate(stageHistory, brand, beforeDateStr) {
+  let stage = 'pending';
+  for (let i = 0; i < stageHistory.length; i++) {
+    const h = stageHistory[i];
+    if (h.brand !== brand) continue;
+    if (h.date >= beforeDateStr) break;
+    stage = h.stage;
+  }
+  return stage;
+}
 
 const fmtNum = n => (n ?? 0).toLocaleString('ko-KR');
 const fmtKRW = n => '₩' + (n ?? 0).toLocaleString('ko-KR');
@@ -191,6 +206,11 @@ export default function Dashboard() {
   // 광고 운영 상태 override (광고 섹션용)
   const [adOverrides, setAdOverrides] = useState({});
 
+  /** 주간 광고 집계 (엑셀 기준) — KV에 함께 저장 */
+  const [weeklyAdRows, setWeeklyAdRows] = useState(INITIAL_WEEKLY_AD_ROWS);
+  const [weeklyPasteText, setWeeklyPasteText] = useState('');
+  const [weeklyPasteMsg, setWeeklyPasteMsg] = useState(null);
+
   // 검색/필터
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('all');
@@ -211,6 +231,7 @@ export default function Dashboard() {
           if (saved.linkedin) setLinkedin(saved.linkedin);
           if (saved.brandStages) setBrandStages(saved.brandStages);
           if (saved.stageHistory) setStageHistory(saved.stageHistory);
+          if (saved.weeklyAdRows && Array.isArray(saved.weeklyAdRows)) setWeeklyAdRows(saved.weeklyAdRows);
         }
         setSyncStatus('saved');
         setHasLoaded(true);
@@ -233,7 +254,7 @@ export default function Dashboard() {
     saveTimerRef.current = setTimeout(async () => {
       try {
         const payload = {
-          leads, blog, linkedin, brandStages, stageHistory,
+          leads, blog, linkedin, brandStages, stageHistory, weeklyAdRows,
           savedAt: new Date().toISOString(),
         };
         const res = await fetch('/api/state', {
@@ -249,11 +270,11 @@ export default function Dashboard() {
     }, 800); // 마지막 변경 후 0.8초 뒤 저장
 
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [leads, blog, linkedin, brandStages, stageHistory, hasLoaded]);
+  }, [leads, blog, linkedin, brandStages, stageHistory, weeklyAdRows, hasLoaded]);
 
   // ─── 데이터 초기화 함수 (모든 입력 리셋) ───
   async function resetAllData() {
-    if (!confirm('정말 모든 입력 데이터를 초기화하시겠습니까?\n\n초기화되는 항목:\n- 콜드 리스트 단계 기록\n- 추가된 브랜드\n- 링크드인 조회수\n- 블로그 추가 기록\n\n되돌릴 수 없습니다.')) return;
+    if (!confirm('정말 모든 입력 데이터를 초기화하시겠습니까?\n\n초기화되는 항목:\n- 콜드 리스트 단계 기록\n- 추가된 브랜드\n- 링크드인 조회수\n- 블로그 추가 기록\n- 주간 광고 엑셀 데이터(붙여넣기 반영분)\n\n되돌릴 수 없습니다.')) return;
     try {
       await fetch('/api/state', { method: 'DELETE' });
       setLeads(INITIAL_LEADS);
@@ -261,6 +282,7 @@ export default function Dashboard() {
       setLinkedin([]);
       setBrandStages({});
       setStageHistory([]);
+      setWeeklyAdRows(INITIAL_WEEKLY_AD_ROWS);
       setSyncStatus('saved');
     } catch (err) {
       alert('초기화 실패: ' + err.message);
@@ -283,6 +305,51 @@ export default function Dashboard() {
   const adsThisWeek = useMemo(() => sumAds(adsInRange(thisWeekStart, TODAY)), [ads, thisWeekStart]);
   const adsLastWeek = useMemo(() => sumAds(adsInRange(lastWeekStart, lastWeekEnd)), [ads, lastWeekStart, lastWeekEnd]);
   const adsAllTime = useMemo(() => sumAds(ads), [ads]);
+
+  const weeklySorted = useMemo(
+    () => [...weeklyAdRows].sort((a, b) => a.weekStart.localeCompare(b.weekStart)),
+    [weeklyAdRows],
+  );
+  const weeklyRowThisWeek = useMemo(
+    () => weeklyAdRows.find(r => r.weekStart === thisWeekStart),
+    [weeklyAdRows, thisWeekStart],
+  );
+  const weeklyRowLastWeek = useMemo(
+    () => weeklyAdRows.find(r => r.weekStart === lastWeekStart),
+    [weeklyAdRows, lastWeekStart],
+  );
+  const weeklyChartData = useMemo(
+    () =>
+      weeklySorted.map(r => {
+        const sumCh = r.convCarisAds + r.convPhone + r.convChannelTalk;
+        return {
+          ...r,
+          shortLabel: r.weekStart.slice(5),
+          convOther: Math.max(0, r.totalConversions - sumCh),
+        };
+      }),
+    [weeklySorted],
+  );
+
+  function mergeWeeklyPasteFromText() {
+    const { rows: parsed, errors } = parseWeeklyAdsPaste(weeklyPasteText);
+    if (!parsed.length) {
+      setWeeklyPasteMsg({
+        type: 'err',
+        text: errors.length ? errors.join('\n') : '파싱된 행이 없습니다. 엑셀에서 표를 복사해 탭 구분으로 붙여넣어 주세요.',
+      });
+      return;
+    }
+    const map = new Map(weeklyAdRows.map(r => [r.weekStart, { ...r }]));
+    parsed.forEach(r => map.set(r.weekStart, r));
+    const next = [...map.values()].sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    setWeeklyAdRows(next);
+    setWeeklyPasteMsg({
+      type: 'ok',
+      text: parsed.length + '주 구간 반영 · 저장 후 전체 ' + next.length + '주' + (errors.length ? ' (' + errors.length + '개 경고)' : ''),
+    });
+    setWeeklyPasteText('');
+  }
 
   const channelSummary = (start, end) => {
     const agg = { Naver:{cost:0,clicks:0,conv:0,imp:0}, Google:{cost:0,clicks:0,conv:0,imp:0}, Meta:{cost:0,clicks:0,conv:0,imp:0} };
@@ -331,19 +398,37 @@ export default function Dashboard() {
     return counts;
   }, [leads, brandStages]);
 
-  // ─── WoW 계산 (히스토리 기반) ───
+  // ─── WoW 계산 (주 시작 vs 현재 단계) ───
+  // 이전: stageHistory의 "이벤트 건수"를 세서, 성사→다른 단계로 되돌린 뒤에도 '이번 주 성사'가 남는 버그가 있었음.
+  // 현재: 이번 월요일 0시 이전까지 재생한 단계 < 지금 단계 이면, 그 주에 해당 단계에 '도달했다'고 보고 1곳만 집계.
   const weeklyStageChange = useMemo(() => {
-    // 이번 주에 새로 "sent" 이상이 된 건수 등을 집계
-    const thisWeek = { sent:0, replied:0, meeting:0, won:0 };
-    const lastWeek = { sent:0, replied:0, meeting:0, won:0 };
-    stageHistory.forEach(h => {
-      const inThis = h.date >= thisWeekStart && h.date <= TODAY;
-      const inLast = h.date >= lastWeekStart && h.date <= lastWeekEnd;
-      if (inThis && thisWeek[h.stage] != null) thisWeek[h.stage]++;
-      if (inLast && lastWeek[h.stage] != null) lastWeek[h.stage]++;
+    const thisWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
+    const lastWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
+    const brands = [...new Set(leads.map(l => l.brand))];
+
+    brands.forEach((brand) => {
+      const now = brandStages[brand]?.stage || 'pending';
+      const idxNow = STAGE_ORDER[now] ?? 0;
+
+      const atThisWeekStart = replayStageBeforeDate(stageHistory, brand, thisWeekStart);
+      const idxAtThisWeekStart = STAGE_ORDER[atThisWeekStart] ?? 0;
+      if (idxNow >= 1 && idxAtThisWeekStart < 1) thisWeek.sent++;
+      if (idxNow >= 2 && idxAtThisWeekStart < 2) thisWeek.replied++;
+      if (idxNow >= 3 && idxAtThisWeekStart < 3) thisWeek.meeting++;
+      if (idxNow >= 4 && idxAtThisWeekStart < 4) thisWeek.won++;
+
+      const atLastWeekStart = replayStageBeforeDate(stageHistory, brand, lastWeekStart);
+      const idxAtLastWeekStart = STAGE_ORDER[atLastWeekStart] ?? 0;
+      const atThisWeekStartForLast = replayStageBeforeDate(stageHistory, brand, thisWeekStart);
+      const idxEndLastWeek = STAGE_ORDER[atThisWeekStartForLast] ?? 0;
+      if (idxEndLastWeek >= 1 && idxAtLastWeekStart < 1) lastWeek.sent++;
+      if (idxEndLastWeek >= 2 && idxAtLastWeekStart < 2) lastWeek.replied++;
+      if (idxEndLastWeek >= 3 && idxAtLastWeekStart < 3) lastWeek.meeting++;
+      if (idxEndLastWeek >= 4 && idxAtLastWeekStart < 4) lastWeek.won++;
     });
+
     return { thisWeek, lastWeek };
-  }, [stageHistory, thisWeekStart, lastWeekStart, lastWeekEnd]);
+  }, [leads, brandStages, stageHistory, thisWeekStart, lastWeekStart]);
 
   // ─── 매체별 일별 전환 ───
   const dailyConv = useMemo(() => {
@@ -467,6 +552,12 @@ export default function Dashboard() {
     if (ch.meeting > 0) return '이번 주 미팅 ' + ch.meeting + '건 잡힘';
     if (ch.replied > 0) return '이번 주 회신 ' + ch.replied + '건 수신';
     if (ch.sent > 0) return '이번 주 콜드메일 ' + ch.sent + '곳 발송 완료';
+    if (weeklyRowThisWeek && weeklyRowThisWeek.totalConversions > 0) {
+      const prev = weeklyRowLastWeek?.totalConversions;
+      const d = prev != null ? weeklyRowThisWeek.totalConversions - prev : 0;
+      return '이번 주 총 전환 ' + weeklyRowThisWeek.totalConversions + '건 (실)' +
+        (prev != null && d !== 0 ? (d > 0 ? ' — 전주 +' + d : ' — 전주 ' + d) : '');
+    }
     const cvDelta = adsThisWeek.conv - adsLastWeek.conv;
     if (adsThisWeek.conv > 0) return '이번 주 광고 전환 ' + adsThisWeek.conv + '건' + (cvDelta > 0 ? ' — 전주 +' + cvDelta : '');
     const organicTotal = blogThisWeek + linkedinThisWeek;
@@ -476,7 +567,7 @@ export default function Dashboard() {
       return '이번 주 오가닉 조회 ' + organicTotal + '회' + (diff > 0 ? ' — 전주 +' + diff : diff < 0 ? ' — 전주 ' + diff : '');
     }
     return '이번 주는 조용한 편 — 아웃바운드 활동 기록이 없습니다';
-  }, [weeklyStageChange, adsThisWeek, adsLastWeek, blogThisWeek, blogLastWeek, linkedinThisWeek, linkedinLastWeek]);
+  }, [weeklyStageChange, weeklyRowThisWeek, weeklyRowLastWeek, adsThisWeek, adsLastWeek, blogThisWeek, blogLastWeek, linkedinThisWeek, linkedinLastWeek]);
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
@@ -651,41 +742,78 @@ export default function Dashboard() {
             {/* 광고는 요약만 */}
             <section>
               <SectionTitle
-                subtitle="자사 홍보용 광고 · 콜드 리스트와는 별개"
+                subtitle={weeklyRowThisWeek
+                  ? '엑셀 주간 집계 · 총 전환 = 카리스 애드 + 유선 + 채널톡 (실제 문의/성과)'
+                  : '주간 행이 없으면 아래 숫자는 일별 매체 시드 합산입니다'}
                 right={
                   <button onClick={() => setTab('ads')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">
-                    자세히 →
+                    주간 표·붙여넣기 →
                   </button>
                 }
               >
                 자사 광고 · 이번 주
               </SectionTitle>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <MetricCard
-                  label="광고 전환"
-                  value={fmtNum(adsThisWeek.conv)}
-                  unit="건"
-                  delta={<Delta curr={adsThisWeek.conv} prev={adsLastWeek.conv} unit="건" />}
-                  color="#059669"
-                />
-                <MetricCard
-                  label="광고비"
-                  value={fmtKRWM(adsThisWeek.cost)}
-                  delta={<Delta curr={adsThisWeek.cost} prev={adsLastWeek.cost} invert />}
-                  sub={adsThisWeek.conv ? 'CPA ' + fmtKRW(Math.round(adsThisWeek.cost / adsThisWeek.conv)) : 'CPA —'}
-                />
-                <MetricCard
-                  label="클릭"
-                  value={fmtNum(adsThisWeek.clicks)}
-                  unit="회"
-                  delta={<Delta curr={adsThisWeek.clicks} prev={adsLastWeek.clicks} unit="회" />}
-                  sub={'CTR ' + fmtPct(adsThisWeek.imp ? adsThisWeek.clicks/adsThisWeek.imp : 0, 2)}
-                />
-              </div>
-              {adsThisWeek.conv === 0 && adsThisWeek.cost === 0 && (
-                <div className="mt-3 text-xs text-neutral-500 bg-neutral-100 rounded-lg px-4 py-2">
-                  이번 주 광고 데이터가 아직 업로드되지 않았습니다 (최신 04.12 기준).
+              {weeklyRowThisWeek ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <MetricCard
+                    label="총 전환수 (실)"
+                    value={fmtNum(weeklyRowThisWeek.totalConversions)}
+                    unit="건"
+                    delta={weeklyRowLastWeek
+                      ? <Delta curr={weeklyRowThisWeek.totalConversions} prev={weeklyRowLastWeek.totalConversions} unit="건" />
+                      : <span className="text-xs text-neutral-400">— 전주 행 없음</span>}
+                    sub={'GA 광고전환 ' + fmtNum(weeklyRowThisWeek.adConversions) + ' · 애드 ' + fmtNum(weeklyRowThisWeek.convCarisAds) + ' · 유선 ' + fmtNum(weeklyRowThisWeek.convPhone) + ' · 채널톡 ' + fmtNum(weeklyRowThisWeek.convChannelTalk)}
+                    color="#059669"
+                  />
+                  <MetricCard
+                    label="총 광고비"
+                    value={fmtKRWM(weeklyRowThisWeek.cost)}
+                    delta={weeklyRowLastWeek
+                      ? <Delta curr={weeklyRowThisWeek.cost} prev={weeklyRowLastWeek.cost} invert />
+                      : <span className="text-xs text-neutral-400">—</span>}
+                  />
+                  <MetricCard
+                    label="CPA (총비÷총전환)"
+                    value={fmtKRW(weeklyRowThisWeek.cpa)}
+                    delta={weeklyRowLastWeek && weeklyRowLastWeek.cpa
+                      ? <Delta curr={weeklyRowThisWeek.cpa} prev={weeklyRowLastWeek.cpa} invert />
+                      : <span className="text-xs text-neutral-400">—</span>}
+                    sub="낮을수록 유리"
+                  />
                 </div>
+              ) : (
+                <>
+                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    주간 표에 <strong>{thisWeekStart}</strong> 행이 없습니다. 「자사 광고」탭에서 엑셀을 붙여넣으면 <strong>총 전환</strong> 기준 요약이 여기 표시됩니다.
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <MetricCard
+                      label="광고 전환 (일별 합)"
+                      value={fmtNum(adsThisWeek.conv)}
+                      unit="건"
+                      delta={<Delta curr={adsThisWeek.conv} prev={adsLastWeek.conv} unit="건" />}
+                      color="#059669"
+                    />
+                    <MetricCard
+                      label="광고비 (일별 합)"
+                      value={fmtKRWM(adsThisWeek.cost)}
+                      delta={<Delta curr={adsThisWeek.cost} prev={adsLastWeek.cost} invert />}
+                      sub={adsThisWeek.conv ? 'CPA ' + fmtKRW(Math.round(adsThisWeek.cost / adsThisWeek.conv)) : 'CPA —'}
+                    />
+                    <MetricCard
+                      label="클릭 (일별 합)"
+                      value={fmtNum(adsThisWeek.clicks)}
+                      unit="회"
+                      delta={<Delta curr={adsThisWeek.clicks} prev={adsLastWeek.clicks} unit="회" />}
+                      sub={'CTR ' + fmtPct(adsThisWeek.imp ? adsThisWeek.clicks / adsThisWeek.imp : 0, 2)}
+                    />
+                  </div>
+                  {adsThisWeek.conv === 0 && adsThisWeek.cost === 0 && (
+                    <div className="mt-3 text-xs text-neutral-500 bg-neutral-100 rounded-lg px-4 py-2">
+                      일별 시드에도 이번 구간 데이터가 거의 없습니다.
+                    </div>
+                  )}
+                </>
               )}
             </section>
 
@@ -920,9 +1048,119 @@ export default function Dashboard() {
         {/* ═════════ TAB: 자사 광고 ═════════ */}
         {tab === 'ads' && (
           <div className="space-y-8">
+            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
+              <SectionTitle subtitle="총 전환수 = 카리스 애드 + 유선 + 채널톡 · CPA = 총 광고비 ÷ 총 전환수">
+                주간 광고 집계 (엑셀)
+              </SectionTitle>
+              <p className="text-sm text-neutral-600 mb-6">
+                <strong className="text-neutral-800">광고 전환</strong>(GA/매체)과 <strong className="text-neutral-800">총 전환수</strong>(실제 문의·성과)은 다릅니다.
+                주간 성과는 <strong>총 전환</strong>과 <strong>CPA</strong>를 기준으로 보시면 됩니다.
+              </p>
+
+              <div className="h-80 mb-8">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={weeklyChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
+                    <XAxis dataKey="shortLabel" tick={{ fontSize: 11, fill: '#737373' }} axisLine={{ stroke: '#e5e5e5' }} tickLine={false} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
+                    <Tooltip
+                      contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                      labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
+                      itemStyle={{ color: '#fafafa' }}
+                      formatter={(v, name) => (name === '총 광고비' ? fmtKRW(v) : v + '건')}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
+                    <Bar yAxisId="left" dataKey="convCarisAds" stackId="c" fill="#059669" name="카리스 애드" />
+                    <Bar yAxisId="left" dataKey="convPhone" stackId="c" fill="#6366f1" name="유선" />
+                    <Bar yAxisId="left" dataKey="convChannelTalk" stackId="c" fill="#f59e0b" name="채널톡" />
+                    <Bar yAxisId="left" dataKey="convOther" stackId="c" fill="#d4d4d4" name="기타(잔차)" />
+                    <Line yAxisId="right" type="monotone" dataKey="cost" name="총 광고비" stroke="#0a0a0a" strokeWidth={1.5} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-neutral-200 mb-6">
+                <table className="min-w-[1100px] w-full text-sm">
+                  <thead>
+                    <tr className="bg-neutral-50 text-left text-xs font-semibold text-neutral-600 border-b border-neutral-200">
+                      <th className="px-3 py-2 whitespace-nowrap">시작(월)</th>
+                      <th className="px-3 py-2 whitespace-nowrap">연/월/주차</th>
+                      <th className="px-3 py-2 text-right">노출</th>
+                      <th className="px-3 py-2 text-right">클릭</th>
+                      <th className="px-3 py-2 text-right">광고 전환</th>
+                      <th className="px-3 py-2 text-right">CTR</th>
+                      <th className="px-3 py-2 text-right">CPC</th>
+                      <th className="px-3 py-2 text-right">총 광고비</th>
+                      <th className="px-3 py-2 text-right">애드</th>
+                      <th className="px-3 py-2 text-right">유선</th>
+                      <th className="px-3 py-2 text-right">채널톡</th>
+                      <th className="px-3 py-2 text-right font-bold text-neutral-900">총 전환</th>
+                      <th className="px-3 py-2 text-right">CPA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weeklySorted.map((r) => (
+                      <tr key={r.weekStart} className="border-b border-neutral-100 hover:bg-neutral-50/80">
+                        <td className="px-3 py-2 font-mono text-xs text-neutral-700 whitespace-nowrap">{r.weekStart}</td>
+                        <td className="px-3 py-2 text-neutral-800 whitespace-nowrap">{r.weekLabel}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.impressions)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.clicks)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.adConversions)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{r.ctr != null ? fmtPct(r.ctr, 2) : '—'}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cpc)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cost)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convCarisAds)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convPhone)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convChannelTalk)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-800">{fmtNum(r.totalConversions)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cpa)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
+                <div className="text-xs font-semibold text-neutral-700 mb-2">엑셀에서 표 복사 → 아래에 붙여넣기 (탭 구분, 주 단위로 병합)</div>
+                <textarea
+                  value={weeklyPasteText}
+                  onChange={(e) => { setWeeklyPasteText(e.target.value); setWeeklyPasteMsg(null); }}
+                  rows={6}
+                  placeholder="첫 열: YYYY-MM-DD (주 시작일) …"
+                  className="w-full text-xs font-mono border border-neutral-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                />
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={mergeWeeklyPasteFromText}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-neutral-900 text-white hover:bg-neutral-800"
+                  >
+                    붙여넣기 반영
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!confirm('주간 표만 초기 샘플 데이터로 되돌릴까요?')) return;
+                      setWeeklyAdRows(INITIAL_WEEKLY_AD_ROWS);
+                      setWeeklyPasteMsg({ type: 'ok', text: '주간 표를 초기 시드로 되돌렸습니다.' });
+                    }}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                  >
+                    주간 표만 시드로 초기화
+                  </button>
+                </div>
+                {weeklyPasteMsg && (
+                  <p className={'mt-3 text-xs whitespace-pre-wrap ' + (weeklyPasteMsg.type === 'ok' ? 'text-emerald-800' : 'text-red-700')}>
+                    {weeklyPasteMsg.text}
+                  </p>
+                )}
+              </div>
+            </section>
+
             <section>
               <SectionTitle subtitle="자사(카리스) 홍보용 광고 성과 · 콜드 아웃바운드와는 별개">
-                자사 광고 누적 성과
+                자사 광고 누적 성과 (일별 시드)
               </SectionTitle>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <MetricCard
