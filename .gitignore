@@ -1,0 +1,20 @@
+# Next.js app (deploy/)
+deploy/node_modules/
+deploy/.pnp
+deploy/.pnp.js
+deploy/coverage/
+deploy/.next/
+deploy/out/
+deploy/build/
+deploy/dist/
+deploy/.DS_Store
+deploy/*.pem
+deploy/npm-debug.log*
+deploy/yarn-debug.log*
+deploy/yarn-error.log*
+deploy/.pnpm-debug.log*
+deploy/.env
+deploy/.env*.local
+deploy/.vercel
+deploy/*.tsbuildinfo
+deploy/next-env.d.ts
