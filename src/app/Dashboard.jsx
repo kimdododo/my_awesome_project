@@ -3,57 +3,86 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  ComposedChart, Line, Legend
+  ComposedChart, Line, Legend, Cell
 } from 'recharts';
-import { Plus, ArrowUpRight, ArrowDownRight, Minus, Mail, MessageCircle, Calendar, CheckCircle2, Circle, Search, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import {
+  Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
+  Cloud, CloudOff, Loader2, Target, Wallet, Users, Trash2, Check, X, Info,
+  LayoutDashboard, ClipboardPenLine, Pencil,
+} from 'lucide-react';
 import { SEED } from '../data/seed';
 import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
 import { parseWeeklyAdsPaste } from '../lib/weeklyAdsPaste';
+import { DAILY_AD_ANCHOR_DEFAULT, dateForOffset, offsetForDate } from '../lib/dailyAdsDates';
 
-const BASE_DATE = new Date('2025-10-20T00:00:00');
-const TODAY = '2026-04-17';
-const addDays = (base, n) => {
-  const d = new Date(base); d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-const CH_MAP = { N: 'Naver', G: 'Google', M: 'Meta' };
+/* ============================================================
+   CONFIG
+   ============================================================ */
+function localISODate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function makeEmptyAdRow(forDay) {
+  return {
+    weekStart: weekStart(forDay),
+    weekLabel: '',
+    impressions: '', clicks: '', adConversions: '',
+    ctr: '', cpc: '', cost: '',
+    convCarisAds: '', convPhone: '', convChannelTalk: '',
+  };
+}
 
 const RAW = SEED;
 const INITIAL_LEADS = RAW.l.map(x => ({
   brand: x.b, priority: x.p, countries: x.c, platform: x.pl, email: x.e,
 }));
 const INITIAL_BLOG = RAW.b.map(x => ({ date: x.d, views: x.v }));
-const INITIAL_ADS = RAW.a.map(x => ({
-  date: addDays(BASE_DATE, x.o),
-  channel: CH_MAP[x.ch],
-  impressions: x.imp, clicks: x.clk, conversions: x.cv, cost: x.co,
+const INITIAL_DAILY_AD_ROWS = RAW.a.map(r => ({
+  o: r.o, ch: r.ch, imp: r.imp, clk: r.clk, cv: r.cv, co: r.co,
 }));
 
-const CHANNEL_COLORS = { Naver: '#03C75A', Google: '#4285F4', Meta: '#0866FF' };
-
-// 콜드 아웃바운드 단계 정의 — 순서가 중요
-const STAGES = [
-  { id: 'pending', label: '미발송',  color: '#a3a3a3', bg: 'bg-neutral-100',  text: 'text-neutral-600' },
-  { id: 'sent',    label: '발송',    color: '#eab308', bg: 'bg-yellow-100',   text: 'text-yellow-800' },
-  { id: 'replied', label: '회신',    color: '#f97316', bg: 'bg-orange-100',   text: 'text-orange-800' },
-  { id: 'meeting', label: '미팅',    color: '#3b82f6', bg: 'bg-blue-100',     text: 'text-blue-800' },
-  { id: 'won',     label: '성사',    color: '#10b981', bg: 'bg-emerald-100',  text: 'text-emerald-800' },
-];
-const STAGE_MAP = Object.fromEntries(STAGES.map(s => [s.id, s]));
-const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
-
-/** beforeDateStr(해당 날 00:00) 이전까지의 히스토리만 재생 → 그 시점 단계 */
-function replayStageBeforeDate(stageHistory, brand, beforeDateStr) {
-  let stage = 'pending';
-  for (let i = 0; i < stageHistory.length; i++) {
-    const h = stageHistory[i];
-    if (h.brand !== brand) continue;
-    if (h.date >= beforeDateStr) break;
-    stage = h.stage;
+function normalizeDailyAdRows(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const out = [];
+  for (const r of arr) {
+    if (!r || r.ch == null || r.o == null) return null;
+    const ch = String(r.ch);
+    if (!['N', 'G', 'M'].includes(ch)) return null;
+    const o = Number(r.o);
+    if (!Number.isFinite(o)) return null;
+    out.push({
+      o,
+      ch,
+      imp: Math.max(0, Number(r.imp) || 0),
+      clk: Math.max(0, Number(r.clk) || 0),
+      cv: Math.max(0, Number(r.cv) || 0),
+      co: Math.max(0, Number(r.co) || 0),
+    });
   }
-  return stage;
+  return out;
 }
 
+const STAGES = [
+  { id: 'pending', label: '미발송', color: '#a3a3a3', bg: 'bg-neutral-100',  text: 'text-neutral-600' },
+  { id: 'sent',    label: '발송',   color: '#eab308', bg: 'bg-yellow-100',   text: 'text-yellow-800' },
+  { id: 'replied', label: '회신',   color: '#f97316', bg: 'bg-orange-100',   text: 'text-orange-800' },
+  { id: 'meeting', label: '미팅',   color: '#3b82f6', bg: 'bg-blue-100',     text: 'text-blue-800' },
+  { id: 'won',     label: '성사',   color: '#10b981', bg: 'bg-emerald-100',  text: 'text-emerald-800' },
+];
+const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
+
+const CONV_COLORS = {
+  carisAds:   '#6366f1', // 보라
+  phone:      '#ec4899', // 핑크
+  channelTalk:'#14b8a6', // 청록
+};
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
 const fmtNum = n => (n ?? 0).toLocaleString('ko-KR');
 const fmtKRW = n => '₩' + (n ?? 0).toLocaleString('ko-KR');
 const fmtKRWM = n => {
@@ -63,8 +92,14 @@ const fmtKRWM = n => {
   return '₩' + v;
 };
 const fmtPct = (n, d = 0) => (n == null ? '—' : (n * 100).toFixed(d) + '%');
-const fmtDate = d => d?.slice(5);
 const shortNum = v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v;
+
+function fmtKoreanDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const wk = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
+  return `${y}. ${String(m).padStart(2, '0')}. ${String(d).padStart(2, '0')} (${wk})`;
+}
 
 function weekStart(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -79,21 +114,14 @@ function daysBefore(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
-// ═══════════════════════════════════════════════
-//  UI ATOMS
-// ═══════════════════════════════════════════════
+/* ============================================================
+   UI PRIMITIVES
+   ============================================================ */
 
-function HeroNumber({ value, unit, color = '#0a0a0a' }) {
-  return (
-    <div className="flex items-baseline gap-1" style={{ color }}>
-      <span className="font-serif tabular-nums" style={{ fontSize: '52px', lineHeight: 1, letterSpacing: '-0.02em' }}>{value}</span>
-      {unit && <span className="text-lg text-neutral-500 ml-0.5">{unit}</span>}
-    </div>
-  );
-}
-
-function Delta({ curr, prev, invert = false, unit = '' }) {
-  if (prev == null || prev === 0) return <span className="text-xs text-neutral-400 font-medium">— 전주 없음</span>;
+function Delta({ curr, prev, invert = false, unit = '', small = false }) {
+  if (prev == null || prev === 0) {
+    return <span className={'text-neutral-400 font-medium ' + (small ? 'text-xs' : 'text-sm')}>— 전주 없음</span>;
+  }
   const diff = curr - prev;
   const pct = prev ? diff / prev : 0;
   const isUp = diff > 0;
@@ -102,40 +130,51 @@ function Delta({ curr, prev, invert = false, unit = '' }) {
   const color = isFlat ? 'text-neutral-500' : isGood ? 'text-emerald-600' : 'text-red-600';
   const Icon = isFlat ? Minus : isUp ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className={'inline-flex items-center gap-1 text-xs font-semibold ' + color}>
-      <Icon size={14} strokeWidth={2.5} />
+    <span className={'inline-flex items-center gap-1 font-semibold ' + color + ' ' + (small ? 'text-xs' : 'text-sm')}>
+      <Icon size={small ? 13 : 15} strokeWidth={2.5} />
       {isFlat ? '동일' : (isUp ? '+' : '') + (unit ? fmtNum(Math.abs(diff)) + unit : fmtPct(Math.abs(pct)))}
       <span className="text-neutral-400 font-normal ml-1">vs 전주</span>
     </span>
   );
 }
 
-function MetricCard({ label, value, unit, delta, sub, color = '#0a0a0a' }) {
+function Card({ children, className = '', ...rest }) {
   return (
-    <div className="bg-white rounded-xl p-6 border border-neutral-200">
-      <div className="text-sm text-neutral-500 font-medium mb-3">{label}</div>
-      <HeroNumber value={value} unit={unit} color={color} />
-      <div className="mt-3">{delta}</div>
-      {sub && <div className="mt-2 text-xs text-neutral-500">{sub}</div>}
+    <div className={'bg-white rounded-2xl border border-neutral-200 ' + className} {...rest}>
+      {children}
+    </div>
+  );
+}
+
+function MiniStat({ label, value, unit, delta, sub, accent, icon: Icon }) {
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-2 mb-2">
+        {Icon && <Icon size={14} className="text-neutral-400" />}
+        <div className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">{label}</div>
+      </div>
+      <div className="flex items-baseline gap-1" style={{ color: accent || '#0a0a0a' }}>
+        <span className="text-4xl font-bold tabular-nums" style={{ letterSpacing: '-0.02em' }}>{value}</span>
+        {unit && <span className="text-base text-neutral-400 ml-0.5">{unit}</span>}
+      </div>
+      {delta && <div className="mt-2">{delta}</div>}
+      {sub && <div className="mt-1 text-xs text-neutral-500">{sub}</div>}
     </div>
   );
 }
 
 function SectionTitle({ children, subtitle, right }) {
   return (
-    <div className="mb-5 flex items-end justify-between">
+    <div className="mb-5 flex items-end justify-between gap-4">
       <div>
         <h2 className="text-xl font-bold text-neutral-900" style={{ letterSpacing: '-0.01em' }}>{children}</h2>
         {subtitle && <p className="text-sm text-neutral-500 mt-1">{subtitle}</p>}
       </div>
-      {right && <div>{right}</div>}
+      {right && <div className="shrink-0">{right}</div>}
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════
-//  STAGE SELECTOR — 브랜드 행에서 사용
-// ═══════════════════════════════════════════════
 function StageSelector({ current, onChange }) {
   return (
     <div className="inline-flex rounded-lg overflow-hidden border border-neutral-200 bg-white">
@@ -157,65 +196,53 @@ function StageSelector({ current, onChange }) {
   );
 }
 
-// 작은 배지 (요약 뷰용)
-function StageBadge({ stage }) {
-  const s = STAGE_MAP[stage] || STAGE_MAP['pending'];
-  return (
-    <span className={'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ' + s.bg + ' ' + s.text}>
-      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
-      {s.label}
-    </span>
-  );
-}
-
-// ═══════════════════════════════════════════════
-//  MAIN
-// ═══════════════════════════════════════════════
+/* ============================================================
+   MAIN
+   ============================================================ */
 
 export default function Dashboard() {
-  // ─── Persistent storage state ───
-  // 'idle' | 'loading' | 'saving' | 'saved' | 'error'
+  const todayStr = useMemo(() => localISODate(), []);
+
+  // ─── Sync ───
   const [syncStatus, setSyncStatus] = useState('loading');
   const [hasLoaded, setHasLoaded] = useState(false);
 
+  // ─── Core data ───
   const [leads, setLeads] = useState(INITIAL_LEADS);
-  const [ads] = useState(INITIAL_ADS);
-  const [blog, setBlog] = useState(INITIAL_BLOG); // {date, views} — naver blog
-  const [linkedin, setLinkedin] = useState([]); // {date, views}
-  const [tab, setTab] = useState('week');
+  const [blog, setBlog] = useState(INITIAL_BLOG);
+  const [linkedin, setLinkedin] = useState([]);
+  const [weeklyAdRows, setWeeklyAdRows] = useState(INITIAL_WEEKLY_AD_ROWS);
+  const [dailyAdRows, setDailyAdRows] = useState(INITIAL_DAILY_AD_ROWS);
+  const [dailyAdsAnchor, setDailyAdsAnchor] = useState(DAILY_AD_ANCHOR_DEFAULT);
+  const [dailyChannelFilter, setDailyChannelFilter] = useState('all');
+  const [newDaily, setNewDaily] = useState(() => ({ ch: 'N', date: localISODate() }));
 
-  // 브랜드 추가 폼 상태
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newBrand, setNewBrand] = useState({ brand: '', countries: '', email: '', platform: '' });
-
-  // 오가닉 매체 입력 폼
-  const [organicInput, setOrganicInput] = useState({
-    source: 'blog',      // 'blog' | 'linkedin'
-    date: TODAY,
-    views: '',
-  });
-
-  // 브랜드별 단계 상태 (핵심!)
-  // { 'Torriden': { stage: 'sent', updatedAt: '2026-04-17' }, ... }
+  // ─── Brand stages ───
   const [brandStages, setBrandStages] = useState({});
-
-  // 브랜드별 변경 이력 (단계가 언제 바뀌었는지 추적 → WoW 계산)
-  // [{ brand, stage, date }]
   const [stageHistory, setStageHistory] = useState([]);
 
-  // 광고 운영 상태 override (광고 섹션용)
-  const [adOverrides, setAdOverrides] = useState({});
-
-  /** 주간 광고 집계 (엑셀 기준) — KV에 함께 저장 */
-  const [weeklyAdRows, setWeeklyAdRows] = useState(INITIAL_WEEKLY_AD_ROWS);
-  const [weeklyPasteText, setWeeklyPasteText] = useState('');
-  const [weeklyPasteMsg, setWeeklyPasteMsg] = useState(null);
-
-  // 검색/필터
+  // ─── UI state ───
+  const [tab, setTab] = useState('week');
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('all');
+  const [showAddBrand, setShowAddBrand] = useState(false);
+  const [newBrand, setNewBrand] = useState({ brand: '', countries: '', email: '', platform: '' });
+  const [leadEdit, setLeadEdit] = useState(null);
 
-  // ─── 초기 로드 (1회만) ───
+  // ─── Input panels (데이터 입력 탭) ───
+  const [newAdRow, setNewAdRow] = useState(() => makeEmptyAdRow(localISODate()));
+  const [pasteText, setPasteText] = useState('');
+  const [pasteMsg, setPasteMsg] = useState(null);
+  const [organicInput, setOrganicInput] = useState(() => ({
+    source: 'blog', date: localISODate(), views: '',
+  }));
+
+  // ─── Date range ───
+  const thisWeekStart = useMemo(() => weekStart(todayStr), [todayStr]);
+  const lastWeekStart = useMemo(() => daysBefore(thisWeekStart, 7), [thisWeekStart]);
+  const lastWeekEnd = useMemo(() => daysBefore(thisWeekStart, 1), [thisWeekStart]);
+
+  // ─── Persistent storage ───
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -225,13 +252,18 @@ export default function Dashboard() {
         if (!res.ok) throw new Error('load failed');
         const data = await res.json();
         if (data && !data.empty && data.data) {
-          const saved = data.data;
-          if (saved.leads) setLeads(saved.leads);
-          if (saved.blog) setBlog(saved.blog);
-          if (saved.linkedin) setLinkedin(saved.linkedin);
-          if (saved.brandStages) setBrandStages(saved.brandStages);
-          if (saved.stageHistory) setStageHistory(saved.stageHistory);
-          if (saved.weeklyAdRows && Array.isArray(saved.weeklyAdRows)) setWeeklyAdRows(saved.weeklyAdRows);
+          const s = data.data;
+          if (s.leads) setLeads(s.leads);
+          if (s.blog) setBlog(s.blog);
+          if (s.linkedin) setLinkedin(s.linkedin);
+          if (s.brandStages) setBrandStages(s.brandStages);
+          if (s.stageHistory) setStageHistory(s.stageHistory);
+          if (s.weeklyAdRows) setWeeklyAdRows(s.weeklyAdRows);
+          const dr = normalizeDailyAdRows(s.dailyAdRows);
+          if (dr) setDailyAdRows(dr);
+          if (typeof s.dailyAdsAnchor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.dailyAdsAnchor)) {
+            setDailyAdsAnchor(s.dailyAdsAnchor);
+          }
         }
         setSyncStatus('saved');
         setHasLoaded(true);
@@ -244,17 +276,16 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // ─── 자동 저장 (debounced) ───
   const saveTimerRef = useRef(null);
   useEffect(() => {
-    if (!hasLoaded) return; // 초기 로드 전엔 저장 안 함
-
+    if (!hasLoaded) return;
     setSyncStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
         const payload = {
-          leads, blog, linkedin, brandStages, stageHistory, weeklyAdRows,
+          leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory,
+          dailyAdRows, dailyAdsAnchor,
           savedAt: new Date().toISOString(),
         };
         const res = await fetch('/api/state', {
@@ -267,115 +298,51 @@ export default function Dashboard() {
       } catch (err) {
         setSyncStatus('error');
       }
-    }, 800); // 마지막 변경 후 0.8초 뒤 저장
-
+    }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [leads, blog, linkedin, brandStages, stageHistory, weeklyAdRows, hasLoaded]);
+  }, [leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory, dailyAdRows, dailyAdsAnchor, hasLoaded]);
 
-  // ─── 데이터 초기화 함수 (모든 입력 리셋) ───
   async function resetAllData() {
-    if (!confirm('정말 모든 입력 데이터를 초기화하시겠습니까?\n\n초기화되는 항목:\n- 콜드 리스트 단계 기록\n- 추가된 브랜드\n- 링크드인 조회수\n- 블로그 추가 기록\n- 주간 광고 엑셀 데이터(붙여넣기 반영분)\n\n되돌릴 수 없습니다.')) return;
+    if (!confirm('모든 입력 데이터를 초기화합니다.\n콜드 리스트 단계, 추가 브랜드, 주간 광고 행, 일별 N/G/M 시트, 링크드인·블로그 추가 기록이 모두 사라집니다.\n되돌릴 수 없습니다. 계속할까요?')) return;
     try {
       await fetch('/api/state', { method: 'DELETE' });
       setLeads(INITIAL_LEADS);
       setBlog(INITIAL_BLOG);
       setLinkedin([]);
+      setWeeklyAdRows(INITIAL_WEEKLY_AD_ROWS);
+      setDailyAdRows(RAW.a.map(r => ({ ...r })));
+      setDailyAdsAnchor(DAILY_AD_ANCHOR_DEFAULT);
       setBrandStages({});
       setStageHistory([]);
-      setWeeklyAdRows(INITIAL_WEEKLY_AD_ROWS);
       setSyncStatus('saved');
     } catch (err) {
       alert('초기화 실패: ' + err.message);
     }
   }
 
-  // ─── 날짜 범위 ───
-  const thisWeekStart = useMemo(() => weekStart(TODAY), []);
-  const lastWeekStart = useMemo(() => daysBefore(thisWeekStart, 7), [thisWeekStart]);
-  const lastWeekEnd = useMemo(() => daysBefore(thisWeekStart, 1), [thisWeekStart]);
-
-  // ─── 광고 집계 ───
-  const adsInRange = (start, end) => ads.filter(a => a.date >= start && a.date <= end);
-  const sumAds = (arr) => {
-    const t = { cost:0, clicks:0, imp:0, conv:0 };
-    arr.forEach(a => { t.cost+=a.cost; t.clicks+=a.clicks; t.imp+=a.impressions; t.conv+=a.conversions; });
-    return t;
-  };
-
-  const adsThisWeek = useMemo(() => sumAds(adsInRange(thisWeekStart, TODAY)), [ads, thisWeekStart]);
-  const adsLastWeek = useMemo(() => sumAds(adsInRange(lastWeekStart, lastWeekEnd)), [ads, lastWeekStart, lastWeekEnd]);
-  const adsAllTime = useMemo(() => sumAds(ads), [ads]);
-
+  /* ────────────────────────────────────────────
+     WEEKLY ADS — AGGREGATIONS
+     ──────────────────────────────────────────── */
   const weeklySorted = useMemo(
     () => [...weeklyAdRows].sort((a, b) => a.weekStart.localeCompare(b.weekStart)),
-    [weeklyAdRows],
-  );
-  const weeklyRowThisWeek = useMemo(
-    () => weeklyAdRows.find(r => r.weekStart === thisWeekStart),
-    [weeklyAdRows, thisWeekStart],
-  );
-  const weeklyRowLastWeek = useMemo(
-    () => weeklyAdRows.find(r => r.weekStart === lastWeekStart),
-    [weeklyAdRows, lastWeekStart],
-  );
-  const weeklyChartData = useMemo(
-    () =>
-      weeklySorted.map(r => {
-        const sumCh = r.convCarisAds + r.convPhone + r.convChannelTalk;
-        return {
-          ...r,
-          shortLabel: r.weekStart.slice(5),
-          convOther: Math.max(0, r.totalConversions - sumCh),
-        };
-      }),
-    [weeklySorted],
+    [weeklyAdRows]
   );
 
-  function mergeWeeklyPasteFromText() {
-    const { rows: parsed, errors } = parseWeeklyAdsPaste(weeklyPasteText);
-    if (!parsed.length) {
-      setWeeklyPasteMsg({
-        type: 'err',
-        text: errors.length ? errors.join('\n') : '파싱된 행이 없습니다. 엑셀에서 표를 복사해 탭 구분으로 붙여넣어 주세요.',
-      });
-      return;
-    }
-    const map = new Map(weeklyAdRows.map(r => [r.weekStart, { ...r }]));
-    parsed.forEach(r => map.set(r.weekStart, r));
-    const next = [...map.values()].sort((a, b) => a.weekStart.localeCompare(b.weekStart));
-    setWeeklyAdRows(next);
-    setWeeklyPasteMsg({
-      type: 'ok',
-      text: parsed.length + '주 구간 반영 · 저장 후 전체 ' + next.length + '주' + (errors.length ? ' (' + errors.length + '개 경고)' : ''),
-    });
-    setWeeklyPasteText('');
-  }
+  const thisWeekAd = useMemo(() => weeklyAdRows.find(r => r.weekStart === thisWeekStart) || null, [weeklyAdRows, thisWeekStart]);
+  const lastWeekAd = useMemo(() => weeklyAdRows.find(r => r.weekStart === lastWeekStart) || null, [weeklyAdRows, lastWeekStart]);
 
-  const channelSummary = (start, end) => {
-    const agg = { Naver:{cost:0,clicks:0,conv:0,imp:0}, Google:{cost:0,clicks:0,conv:0,imp:0}, Meta:{cost:0,clicks:0,conv:0,imp:0} };
-    ads.filter(a => a.date >= start && a.date <= end).forEach(a => {
-      if (!agg[a.channel]) return;
-      agg[a.channel].cost += a.cost;
-      agg[a.channel].clicks += a.clicks;
-      agg[a.channel].conv += a.conversions;
-      agg[a.channel].imp += a.impressions;
-    });
-    return Object.entries(agg).map(([name, v]) => ({
-      name, ...v,
-      cpa: v.conv ? Math.round(v.cost / v.conv) : null,
-      cvr: v.clicks ? v.conv / v.clicks : 0,
-      ctr: v.imp ? v.clicks / v.imp : 0,
-      cpc: v.clicks ? Math.round(v.cost / v.clicks) : 0,
-    }));
-  };
+  const last8 = useMemo(() => weeklySorted.slice(-8), [weeklySorted]);
 
-  const channelWeek = useMemo(() => channelSummary(thisWeekStart, TODAY), [ads, thisWeekStart]);
-  const channelAll = useMemo(() => channelSummary('2000-01-01', TODAY), [ads]);
+  /* ────────────────────────────────────────────
+     COLD LIST STAGES
+     ──────────────────────────────────────────── */
+  const allBrands = useMemo(
+    () => Array.from(new Set([...leads.map(l => l.brand), ...Object.keys(brandStages)])).sort(),
+    [leads, brandStages]
+  );
 
-  // ─── 브랜드 상태 집계 (퍼널의 원천) ───
-  // 각 브랜드는 "가장 진행된" 단계에 있음. sent로 간 브랜드는 sent 이상에도 카운트.
   const stageCounts = useMemo(() => {
-    const counts = { pending:0, sent:0, replied:0, meeting:0, won:0 };
+    const counts = { pending: 0, sent: 0, replied: 0, meeting: 0, won: 0 };
     leads.forEach(l => {
       const curr = brandStages[l.brand]?.stage || 'pending';
       counts[curr]++;
@@ -383,159 +350,228 @@ export default function Dashboard() {
     return counts;
   }, [leads, brandStages]);
 
-  // 퍼널은 누적식 (발송한 건 회신/미팅/성사 다 포함해야 함)
   const funnelCumulative = useMemo(() => {
-    const stageIdx = { pending:0, sent:1, replied:2, meeting:3, won:4 };
-    const counts = { total: leads.length, sent:0, replied:0, meeting:0, won:0 };
+    const c = { total: leads.length, sent: 0, replied: 0, meeting: 0, won: 0 };
     leads.forEach(l => {
       const curr = brandStages[l.brand]?.stage || 'pending';
-      const idx = stageIdx[curr] || 0;
-      if (idx >= 1) counts.sent++;
-      if (idx >= 2) counts.replied++;
-      if (idx >= 3) counts.meeting++;
-      if (idx >= 4) counts.won++;
+      const idx = STAGE_ORDER[curr] || 0;
+      if (idx >= 1) c.sent++;
+      if (idx >= 2) c.replied++;
+      if (idx >= 3) c.meeting++;
+      if (idx >= 4) c.won++;
     });
-    return counts;
+    return c;
   }, [leads, brandStages]);
 
-  // ─── WoW 계산 (주 시작 vs 현재 단계) ───
-  // 이전: stageHistory의 "이벤트 건수"를 세서, 성사→다른 단계로 되돌린 뒤에도 '이번 주 성사'가 남는 버그가 있었음.
-  // 현재: 이번 월요일 0시 이전까지 재생한 단계 < 지금 단계 이면, 그 주에 해당 단계에 '도달했다'고 보고 1곳만 집계.
   const weeklyStageChange = useMemo(() => {
     const thisWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
     const lastWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
-    const brands = [...new Set(leads.map(l => l.brand))];
-
-    brands.forEach((brand) => {
-      const now = brandStages[brand]?.stage || 'pending';
-      const idxNow = STAGE_ORDER[now] ?? 0;
-
-      const atThisWeekStart = replayStageBeforeDate(stageHistory, brand, thisWeekStart);
-      const idxAtThisWeekStart = STAGE_ORDER[atThisWeekStart] ?? 0;
-      if (idxNow >= 1 && idxAtThisWeekStart < 1) thisWeek.sent++;
-      if (idxNow >= 2 && idxAtThisWeekStart < 2) thisWeek.replied++;
-      if (idxNow >= 3 && idxAtThisWeekStart < 3) thisWeek.meeting++;
-      if (idxNow >= 4 && idxAtThisWeekStart < 4) thisWeek.won++;
-
-      const atLastWeekStart = replayStageBeforeDate(stageHistory, brand, lastWeekStart);
-      const idxAtLastWeekStart = STAGE_ORDER[atLastWeekStart] ?? 0;
-      const atThisWeekStartForLast = replayStageBeforeDate(stageHistory, brand, thisWeekStart);
-      const idxEndLastWeek = STAGE_ORDER[atThisWeekStartForLast] ?? 0;
-      if (idxEndLastWeek >= 1 && idxAtLastWeekStart < 1) lastWeek.sent++;
-      if (idxEndLastWeek >= 2 && idxAtLastWeekStart < 2) lastWeek.replied++;
-      if (idxEndLastWeek >= 3 && idxAtLastWeekStart < 3) lastWeek.meeting++;
-      if (idxEndLastWeek >= 4 && idxAtLastWeekStart < 4) lastWeek.won++;
+    stageHistory.forEach(h => {
+      if (h.date >= thisWeekStart && h.date <= todayStr && thisWeek[h.stage] != null) thisWeek[h.stage]++;
+      if (h.date >= lastWeekStart && h.date <= lastWeekEnd && lastWeek[h.stage] != null) lastWeek[h.stage]++;
     });
-
     return { thisWeek, lastWeek };
-  }, [leads, brandStages, stageHistory, thisWeekStart, lastWeekStart]);
+  }, [stageHistory, thisWeekStart, lastWeekStart, lastWeekEnd, todayStr]);
 
-  // ─── 매체별 일별 전환 ───
-  const dailyConv = useMemo(() => {
-    const map = new Map();
-    ads.forEach(a => {
-      if (!map.has(a.date)) map.set(a.date, { date:a.date, Naver:0, Google:0, Meta:0, cost:0 });
-      map.get(a.date)[a.channel] = (map.get(a.date)[a.channel] || 0) + a.conversions;
-      map.get(a.date).cost += a.cost;
+  /* ────────────────────────────────────────────
+     ORGANIC
+     ──────────────────────────────────────────── */
+  const blogThisWeek = useMemo(() => blog.filter(b => b.date >= thisWeekStart && b.date <= todayStr).reduce((s, b) => s + b.views, 0), [blog, thisWeekStart, todayStr]);
+  const blogLastWeek = useMemo(() => blog.filter(b => b.date >= lastWeekStart && b.date <= lastWeekEnd).reduce((s, b) => s + b.views, 0), [blog, lastWeekStart, lastWeekEnd]);
+  const linkedinThisWeek = useMemo(() => linkedin.filter(b => b.date >= thisWeekStart && b.date <= todayStr).reduce((s, b) => s + b.views, 0), [linkedin, thisWeekStart, todayStr]);
+  const linkedinLastWeek = useMemo(() => linkedin.filter(b => b.date >= lastWeekStart && b.date <= lastWeekEnd).reduce((s, b) => s + b.views, 0), [linkedin, lastWeekStart, lastWeekEnd]);
+
+  const filteredDailyRows = useMemo(() => {
+    const rows = dailyChannelFilter === 'all'
+      ? dailyAdRows
+      : dailyAdRows.filter(r => r.ch === dailyChannelFilter);
+    return [...rows].sort((a, b) => {
+      const da = dateForOffset(dailyAdsAnchor, a.o);
+      const db = dateForOffset(dailyAdsAnchor, b.o);
+      if (da !== db) return db.localeCompare(da);
+      return a.ch.localeCompare(b.ch);
     });
-    return Array.from(map.values()).sort((a,b) => a.date.localeCompare(b.date));
-  }, [ads]);
+  }, [dailyAdRows, dailyChannelFilter, dailyAdsAnchor]);
 
-  const dailyConvRange = (n) => {
-    const cutoff = daysBefore(TODAY, n - 1);
-    return dailyConv.filter(d => d.date >= cutoff);
-  };
+  const dailyThisWeekTotals = useMemo(() => {
+    const t = {
+      N: { imp: 0, clk: 0, cv: 0, co: 0 },
+      G: { imp: 0, clk: 0, cv: 0, co: 0 },
+      M: { imp: 0, clk: 0, cv: 0, co: 0 },
+    };
+    for (const r of dailyAdRows) {
+      const d = dateForOffset(dailyAdsAnchor, r.o);
+      if (d < thisWeekStart || d > todayStr) continue;
+      if (!t[r.ch]) continue;
+      t[r.ch].imp += r.imp;
+      t[r.ch].clk += r.clk;
+      t[r.ch].cv += r.cv;
+      t[r.ch].co += r.co;
+    }
+    return t;
+  }, [dailyAdRows, dailyAdsAnchor, thisWeekStart, todayStr]);
 
-  // ─── 단계 변경 핸들러 ───
+  /* ────────────────────────────────────────────
+     HANDLERS
+     ──────────────────────────────────────────── */
   function setStage(brand, newStage) {
-    setBrandStages(prev => ({
-      ...prev,
-      [brand]: { stage: newStage, updatedAt: TODAY }
-    }));
-    setStageHistory(prev => [...prev, { brand, stage: newStage, date: TODAY }]);
+    setBrandStages(p => ({ ...p, [brand]: { stage: newStage, updatedAt: todayStr } }));
+    setStageHistory(p => [...p, { brand, stage: newStage, date: todayStr }]);
   }
 
-  // ─── 브랜드 추가 핸들러 ───
+  function saveLeadEdit() {
+    if (!leadEdit) return;
+    const countries = leadEdit.countries.split(/[,\/]/).map(s => s.trim()).filter(Boolean);
+    setLeads(p => p.map(l =>
+      l.brand === leadEdit.brand
+        ? { ...l, priority: leadEdit.priority, countries, platform: leadEdit.platform.trim(), email: leadEdit.email.trim() }
+        : l
+    ));
+    setLeadEdit(null);
+  }
+
   function addBrand() {
     const name = newBrand.brand.trim();
     if (!name) return;
-    // 중복 체크 (대소문자 무시)
     if (leads.some(l => l.brand.toLowerCase() === name.toLowerCase())) {
       alert('이미 리스트에 있는 브랜드입니다: ' + name);
       return;
     }
-    const countries = newBrand.countries
-      .split(/[,\/]/).map(s => s.trim()).filter(Boolean);
-    setLeads(prev => [
-      {
-        brand: name,
-        priority: 'NEW',
-        countries,
-        platform: newBrand.platform.trim(),
-        email: newBrand.email.trim(),
-      },
-      ...prev,
+    const countries = newBrand.countries.split(/[,\/]/).map(s => s.trim()).filter(Boolean);
+    setLeads(p => [
+      { brand: name, priority: 'NEW', countries, platform: newBrand.platform.trim(), email: newBrand.email.trim() },
+      ...p,
     ]);
     setNewBrand({ brand: '', countries: '', email: '', platform: '' });
-    setShowAddForm(false);
+    setShowAddBrand(false);
   }
 
-  // ─── 오가닉 매체 입력 핸들러 ───
+  function deleteBrand(name) {
+    if (!confirm(`"${name}"를 리스트에서 삭제하시겠어요?`)) return;
+    setLeads(p => p.filter(l => l.brand !== name));
+    setBrandStages(p => { const n = { ...p }; delete n[name]; return n; });
+  }
+
   function addOrganic() {
     const v = parseInt(organicInput.views, 10);
     if (isNaN(v) || v < 0 || !organicInput.date) return;
     const entry = { date: organicInput.date, views: v };
     if (organicInput.source === 'blog') {
-      // 같은 날짜 있으면 덮어쓰기
-      setBlog(prev => {
-        const filtered = prev.filter(b => b.date !== entry.date);
+      setBlog(p => {
+        const filtered = p.filter(b => b.date !== entry.date);
         return [entry, ...filtered].sort((a, b) => b.date.localeCompare(a.date));
       });
     } else {
-      setLinkedin(prev => {
-        const filtered = prev.filter(b => b.date !== entry.date);
+      setLinkedin(p => {
+        const filtered = p.filter(b => b.date !== entry.date);
         return [entry, ...filtered].sort((a, b) => b.date.localeCompare(a.date));
       });
     }
-    // 입력값만 초기화 (날짜/소스는 유지 → 연속 입력 편의)
-    setOrganicInput(prev => ({ ...prev, views: '' }));
+    setOrganicInput(p => ({ ...p, views: '' }));
   }
 
   function deleteOrganic(source, date) {
-    if (source === 'blog') setBlog(prev => prev.filter(b => b.date !== date));
-    else setLinkedin(prev => prev.filter(b => b.date !== date));
+    if (source === 'blog') setBlog(p => p.filter(b => b.date !== date));
+    else setLinkedin(p => p.filter(b => b.date !== date));
   }
 
-  // ─── 오가닉 집계 ───
-  const organicSumInRange = (arr, start, end) =>
-    arr.filter(x => x.date >= start && x.date <= end).reduce((s, x) => s + x.views, 0);
+  function patchDailyRow(ch, o, patch) {
+    setDailyAdRows(prev => prev.map(r => (r.ch === ch && r.o === o ? { ...r, ...patch } : r)));
+  }
 
-  const blogThisWeek = useMemo(() => organicSumInRange(blog, thisWeekStart, TODAY), [blog, thisWeekStart]);
-  const blogLastWeek = useMemo(() => organicSumInRange(blog, lastWeekStart, lastWeekEnd), [blog, lastWeekStart, lastWeekEnd]);
-  const blogAllTime  = useMemo(() => blog.reduce((s, b) => s + b.views, 0), [blog]);
+  function setDailyField(ch, o, key, rawVal) {
+    const n = parseInt(String(rawVal).replace(/[,₩\s]/g, ''), 10);
+    const v = Number.isFinite(n) && n >= 0 ? n : 0;
+    patchDailyRow(ch, o, { [key]: v });
+  }
 
-  const linkedinThisWeek = useMemo(() => organicSumInRange(linkedin, thisWeekStart, TODAY), [linkedin, thisWeekStart]);
-  const linkedinLastWeek = useMemo(() => organicSumInRange(linkedin, lastWeekStart, lastWeekEnd), [linkedin, lastWeekStart, lastWeekEnd]);
-  const linkedinAllTime  = useMemo(() => linkedin.reduce((s, b) => s + b.views, 0), [linkedin]);
-
-  // 일별 오가닉 차트용 (최근 30일)
-  const organicDaily = useMemo(() => {
-    const map = new Map();
-    blog.forEach(b => {
-      if (!map.has(b.date)) map.set(b.date, { date: b.date, blog: 0, linkedin: 0 });
-      map.get(b.date).blog = b.views;
+  function addDailyRowFromForm() {
+    const ch = newDaily.ch;
+    const dateStr = newDaily.date;
+    if (!dateStr || !['N', 'G', 'M'].includes(ch)) return;
+    const o = offsetForDate(dailyAdsAnchor, dateStr);
+    if (!Number.isFinite(o)) return;
+    setDailyAdRows(prev => {
+      if (prev.some(r => r.ch === ch && r.o === o)) {
+        alert('같은 매체·같은 날짜 행이 이미 있습니다. 아래 표에서 수정하세요.');
+        return prev;
+      }
+      return [...prev, { o, ch, imp: 0, clk: 0, cv: 0, co: 0 }].sort((a, b) => {
+        if (a.ch !== b.ch) return a.ch.localeCompare(b.ch);
+        return a.o - b.o;
+      });
     });
-    linkedin.forEach(b => {
-      if (!map.has(b.date)) map.set(b.date, { date: b.date, blog: 0, linkedin: 0 });
-      map.get(b.date).linkedin = b.views;
-    });
-    const cutoff = daysBefore(TODAY, 29);
-    return Array.from(map.values())
-      .filter(x => x.date >= cutoff)
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [blog, linkedin]);
+  }
 
-  // ─── 필터링된 리드 ───
+  function deleteDailyRow(ch, o) {
+    if (!confirm('이 일별 행을 삭제할까요?')) return;
+    setDailyAdRows(prev => prev.filter(r => !(r.ch === ch && r.o === o)));
+  }
+
+  /* ────────────────────────────────────────────
+     WEEKLY AD: manual add + paste
+     ──────────────────────────────────────────── */
+  function addWeeklyAdRow() {
+    const row = newAdRow;
+    if (!row.weekStart) { alert('주 시작일(월요일)을 입력하세요'); return; }
+    const ws = weekStart(row.weekStart); // 월요일 보정
+    const impressions = parseInt(row.impressions, 10) || 0;
+    const clicks = parseInt(row.clicks, 10) || 0;
+    const adConversions = parseInt(row.adConversions, 10) || 0;
+    const cost = parseInt(String(row.cost).replace(/[₩,\s]/g, ''), 10) || 0;
+    const convCarisAds = parseInt(row.convCarisAds, 10) || 0;
+    const convPhone = parseInt(row.convPhone, 10) || 0;
+    const convChannelTalk = parseInt(row.convChannelTalk, 10) || 0;
+    const totalConversions = convCarisAds + convPhone + convChannelTalk;
+    const cpc = clicks ? Math.round(cost / clicks) : 0;
+    const ctr = impressions ? clicks / impressions : 0;
+    const cpa = totalConversions ? Math.round(cost / totalConversions) : 0;
+
+    const newEntry = {
+      weekStart: ws,
+      weekLabel: row.weekLabel.trim(),
+      impressions, clicks, adConversions,
+      ctr, cpc, cost,
+      convCarisAds, convPhone, convChannelTalk,
+      totalConversions, cpa,
+    };
+
+    setWeeklyAdRows(p => {
+      const filtered = p.filter(r => r.weekStart !== ws);
+      return [...filtered, newEntry].sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    });
+    setNewAdRow(makeEmptyAdRow(todayStr));
+    setPasteMsg({ kind: 'ok', text: `${ws} 주 데이터가 저장되었습니다. (총 전환 ${totalConversions}건)` });
+    setTimeout(() => setPasteMsg(null), 4000);
+  }
+
+  function deleteWeeklyAdRow(ws) {
+    if (!confirm(`${ws} 주 광고 행을 삭제하시겠어요?`)) return;
+    setWeeklyAdRows(p => p.filter(r => r.weekStart !== ws));
+  }
+
+  function applyPaste() {
+    const { rows, errors } = parseWeeklyAdsPaste(pasteText);
+    if (!rows.length) {
+      setPasteMsg({ kind: 'error', text: '인식된 행이 없습니다. 탭 구분된 표를 붙여넣으세요. ' + (errors[0] || '') });
+      return;
+    }
+    setWeeklyAdRows(prev => {
+      const map = new Map(prev.map(r => [r.weekStart, r]));
+      rows.forEach(r => map.set(r.weekStart, r));
+      return [...map.values()].sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+    });
+    setPasteText('');
+    setPasteMsg({
+      kind: 'ok',
+      text: `${rows.length}개 주 데이터가 저장되었습니다` + (errors.length ? ` (경고 ${errors.length}건)` : ''),
+    });
+    setTimeout(() => setPasteMsg(null), 5000);
+  }
+
+  /* ────────────────────────────────────────────
+     Filtered leads
+     ──────────────────────────────────────────── */
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
       if (search && !l.brand.toLowerCase().includes(search.toLowerCase())) return false;
@@ -545,417 +581,451 @@ export default function Dashboard() {
     });
   }, [leads, brandStages, search, filterStage]);
 
-  // ─── 헤드라인 자동 생성 ───
+  /* ────────────────────────────────────────────
+     Headline (for This Week tab)
+     ──────────────────────────────────────────── */
   const headline = useMemo(() => {
+    if (thisWeekAd) {
+      const total = thisWeekAd.totalConversions || 0;
+      const last = lastWeekAd?.totalConversions || 0;
+      const diff = total - last;
+      if (total > 0) {
+        if (diff > 0) return `이번 주 총 전환 ${total}건 · 전주 대비 +${diff}건`;
+        if (diff < 0) return `이번 주 총 전환 ${total}건 · 전주 대비 ${diff}건`;
+        return `이번 주 총 전환 ${total}건 · 전주와 동일`;
+      }
+    }
     const ch = weeklyStageChange.thisWeek;
-    if (ch.won > 0) return '이번 주 성사 ' + ch.won + '건 — 드디어 결실을!';
-    if (ch.meeting > 0) return '이번 주 미팅 ' + ch.meeting + '건 잡힘';
-    if (ch.replied > 0) return '이번 주 회신 ' + ch.replied + '건 수신';
-    if (ch.sent > 0) return '이번 주 콜드메일 ' + ch.sent + '곳 발송 완료';
-    if (weeklyRowThisWeek && weeklyRowThisWeek.totalConversions > 0) {
-      const prev = weeklyRowLastWeek?.totalConversions;
-      const d = prev != null ? weeklyRowThisWeek.totalConversions - prev : 0;
-      return '이번 주 총 전환 ' + weeklyRowThisWeek.totalConversions + '건 (실)' +
-        (prev != null && d !== 0 ? (d > 0 ? ' — 전주 +' + d : ' — 전주 ' + d) : '');
-    }
-    const cvDelta = adsThisWeek.conv - adsLastWeek.conv;
-    if (adsThisWeek.conv > 0) return '이번 주 광고 전환 ' + adsThisWeek.conv + '건' + (cvDelta > 0 ? ' — 전주 +' + cvDelta : '');
-    const organicTotal = blogThisWeek + linkedinThisWeek;
-    const organicLast = blogLastWeek + linkedinLastWeek;
-    if (organicTotal > 0) {
-      const diff = organicTotal - organicLast;
-      return '이번 주 오가닉 조회 ' + organicTotal + '회' + (diff > 0 ? ' — 전주 +' + diff : diff < 0 ? ' — 전주 ' + diff : '');
-    }
-    return '이번 주는 조용한 편 — 아웃바운드 활동 기록이 없습니다';
-  }, [weeklyStageChange, weeklyRowThisWeek, weeklyRowLastWeek, adsThisWeek, adsLastWeek, blogThisWeek, blogLastWeek, linkedinThisWeek, linkedinLastWeek]);
+    if (ch.won > 0) return `이번 주 성사 ${ch.won}건 — 결실!`;
+    if (ch.meeting > 0) return `이번 주 미팅 ${ch.meeting}건 잡힘`;
+    if (ch.sent > 0) return `이번 주 콜드메일 ${ch.sent}곳 발송`;
+    return '이번 주 데이터를 입력해주세요';
+  }, [thisWeekAd, lastWeekAd, weeklyStageChange]);
 
+  /* ────────────────────────────────────────────
+     RENDER
+     ──────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
+      <style>{`
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+      `}</style>
+
       {/* HEADER */}
-      <header className="bg-white border-b border-neutral-200">
-        <div className="max-w-[1200px] mx-auto px-8 py-5 flex items-center justify-between">
+      <header className="bg-white border-b border-neutral-200 shadow-sm">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xs text-neutral-500 font-medium mb-1">CARIS · WEEKLY REPORT</div>
-            <h1 className="text-xl font-bold tracking-tight">K-Beauty SEA Outbound</h1>
+            <div className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.12em] mb-1">CARIS · NSM 허브</div>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900">K-Beauty SEA Outbound</h1>
+            <p className="text-xs text-neutral-500 mt-1.5 max-w-md leading-relaxed">
+              엑셀 시트를 나눠 쓰지 말고, 이 앱 한 곳에 주간 광고·오가닉·콜드 리스트를 입력하세요. 저장되면 팀 전체가 같은 데이터를 봅니다.
+            </p>
           </div>
-          <div className="flex items-center gap-4">
-            {/* 저장 상태 */}
-            <div className="flex items-center gap-1.5 text-xs">
-              {syncStatus === 'loading' && (
-                <><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중…</span></>
-              )}
-              {syncStatus === 'saving' && (
-                <><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중…</span></>
-              )}
-              {syncStatus === 'saved' && (
-                <><Cloud size={13} className="text-emerald-500" /><span className="text-emerald-600 font-medium">저장됨</span></>
-              )}
-              {syncStatus === 'error' && (
-                <><CloudOff size={13} className="text-red-500" /><span className="text-red-600 font-medium">저장 실패</span></>
-              )}
-              {syncStatus === 'idle' && (
-                <><CloudOff size={13} className="text-neutral-400" /><span className="text-neutral-500">세션 저장</span></>
-              )}
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 sm:justify-end">
+            <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-neutral-50 border border-neutral-100">
+              {syncStatus === 'loading' && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중</span></>)}
+              {syncStatus === 'saving'  && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중</span></>)}
+              {syncStatus === 'saved'   && (<><Cloud size={13} className="text-emerald-500" /><span className="text-emerald-700 font-medium">저장됨</span></>)}
+              {syncStatus === 'error'   && (<><CloudOff size={13} className="text-red-500" /><span className="text-red-600 font-medium">저장 실패</span></>)}
             </div>
-            {/* 초기화 */}
-            <button
-              onClick={resetAllData}
-              className="text-xs text-neutral-500 hover:text-red-600 font-medium transition-colors px-2 py-1 rounded hover:bg-red-50"
-              title="모든 입력 데이터 초기화"
-            >
+            <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-red-600 font-medium px-2 py-1.5 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100" title="모든 입력 초기화">
               초기화
             </button>
-            <div className="text-right border-l border-neutral-200 pl-4">
-              <div className="text-xs text-neutral-500 mb-1">Report Date</div>
-              <div className="text-sm font-semibold tabular-nums">2026. 04. 17 (금)</div>
+            <div className="text-left sm:text-right border border-neutral-100 rounded-xl px-4 py-2 bg-neutral-50/80">
+              <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider mb-0.5">오늘</div>
+              <div className="text-sm font-semibold tabular-nums text-neutral-900">{fmtKoreanDate(todayStr)}</div>
             </div>
           </div>
         </div>
       </header>
 
       {/* TAB BAR */}
-      <div className="bg-white border-b border-neutral-200 sticky top-0 z-10">
-        <div className="max-w-[1200px] mx-auto px-8 flex">
+      <div className="bg-white/95 backdrop-blur border-b border-neutral-200 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 flex gap-1 sm:gap-2 overflow-x-auto pb-px">
           {[
-            { id: 'week',    label: '이번 주',     sub: 'This Week' },
-            { id: 'leads',   label: '콜드 리스트',  sub: 'Outreach' },
-            { id: 'ads',     label: '자사 광고',    sub: 'Ads Performance' },
-            { id: 'organic', label: '오가닉 매체',  sub: 'Blog · LinkedIn' },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={'px-6 py-4 text-sm font-semibold border-b-2 transition-colors ' +
-                (tab === t.id ? 'border-neutral-900 text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800')}
-            >
-              <div>{t.label}</div>
-              <div className="text-[10px] font-normal mt-0.5 opacity-60">{t.sub}</div>
-            </button>
-          ))}
+            { id: 'week',  label: '이번 주',     sub: 'NSM · 요약', Icon: LayoutDashboard },
+            { id: 'leads', label: '콜드 리스트', sub: '리드 · 단계', Icon: Users },
+            { id: 'input', label: '데이터 입력', sub: '시트 대체', Icon: ClipboardPenLine },
+          ].map(t => {
+            const Icon = t.Icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={'flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left border-b-2 transition-colors shrink-0 rounded-t-lg ' +
+                  (active ? 'border-emerald-600 bg-emerald-50/40 text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50')}
+              >
+                <span className={'p-1.5 rounded-lg ' + (active ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-500')}>
+                  <Icon size={16} strokeWidth={2.2} />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold">{t.label}</span>
+                  <span className="block text-[10px] font-medium mt-0.5 opacity-70">{t.sub}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <main className="max-w-[1200px] mx-auto px-8 py-8">
 
-        {/* ═════════ TAB: 이번 주 ═════════ */}
+        {/* ═══════════════════════════════════ TAB: 이번 주 ═══════════════════════════════════ */}
         {tab === 'week' && (
-          <div className="space-y-8">
+          <div className="space-y-6">
 
-            {/* 헤드라인 */}
-            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <div className="text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-3">This Week&apos;s Headline</div>
-              <h2 className="text-3xl font-bold text-neutral-900 leading-tight" style={{ letterSpacing: '-0.02em' }}>
-                {headline}
-              </h2>
-              <p className="text-sm text-neutral-500 mt-3">
-                {thisWeekStart} ~ {TODAY} · 월~금 기준
-              </p>
-            </section>
+            {/* HERO — NSM */}
+            <Card className="overflow-hidden">
+              <div className="p-8 bg-gradient-to-br from-neutral-900 to-neutral-800 text-white">
+                <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                  <Target size={14} />
+                  North Star · 이번 주 총 전환
+                </div>
+                {thisWeekAd ? (
+                  <>
+                    <div className="flex items-baseline gap-3 mb-3">
+                      <span className="tabular-nums font-bold" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>
+                        {fmtNum(thisWeekAd.totalConversions)}
+                      </span>
+                      <span className="text-3xl text-neutral-400 font-medium">건</span>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm text-neutral-300">
+                      {lastWeekAd ? (
+                        (() => {
+                          const diff = thisWeekAd.totalConversions - lastWeekAd.totalConversions;
+                          const up = diff > 0;
+                          const flat = diff === 0;
+                          const color = flat ? 'text-neutral-400' : up ? 'text-emerald-300' : 'text-rose-300';
+                          const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
+                          return (
+                            <span className={'inline-flex items-center gap-1 font-semibold ' + color}>
+                              <Icon size={16} strokeWidth={2.5} />
+                              {flat ? '전주와 동일' : (up ? '+' : '') + diff + '건 vs 전주 ' + lastWeekAd.totalConversions + '건'}
+                            </span>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-neutral-400">전주 데이터 없음</span>
+                      )}
+                      <span className="text-neutral-400">·</span>
+                      <span>{thisWeekAd.weekLabel || thisWeekStart}</span>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-neutral-700 grid grid-cols-3 gap-6">
+                      <div>
+                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.carisAds }} />
+                          카리스 애드
+                        </div>
+                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.carisAds }}>{thisWeekAd.convCarisAds}</div>
+                        <div className="text-xs text-neutral-400 mt-1">
+                          {thisWeekAd.totalConversions ? ((thisWeekAd.convCarisAds / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.phone }} />
+                          유선
+                        </div>
+                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.phone }}>{thisWeekAd.convPhone}</div>
+                        <div className="text-xs text-neutral-400 mt-1">
+                          {thisWeekAd.totalConversions ? ((thisWeekAd.convPhone / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.channelTalk }} />
+                          채널톡
+                        </div>
+                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.channelTalk }}>{thisWeekAd.convChannelTalk}</div>
+                        <div className="text-xs text-neutral-400 mt-1">
+                          {thisWeekAd.totalConversions ? ((thisWeekAd.convChannelTalk / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline gap-3 mb-3">
+                      <span className="tabular-nums font-bold text-neutral-600" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>—</span>
+                    </div>
+                    <p className="text-neutral-400 mb-5">이번 주 ({thisWeekStart} 월요일 기준) 광고 데이터가 아직 입력되지 않았습니다.</p>
+                    <button
+                      onClick={() => setTab('input')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-neutral-900 font-semibold rounded-lg text-sm transition-colors"
+                    >
+                      <Plus size={16} /> 이번 주 데이터 입력하기
+                    </button>
+                  </>
+                )}
+              </div>
 
-            {/* 콜드 아웃바운드 4개 카드 */}
-            <section>
-              <SectionTitle subtitle="브랜드 단계를 '콜드 리스트' 탭에서 바꾸면 여기에 바로 집계됩니다">
-                콜드 아웃바운드 · 이번 주 활동
-              </SectionTitle>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MetricCard
-                  label="발송"
+              {/* 8-week trend inside hero card */}
+              {last8.length > 0 && (
+                <div className="p-6 border-t border-neutral-200">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-neutral-900">최근 8주 총 전환 추이</h3>
+                      <p className="text-xs text-neutral-500 mt-0.5">막대 = 총 전환수 · 점선 = CPA</p>
+                    </div>
+                  </div>
+                  <div className="h-44">
+                    <ResponsiveContainer>
+                      <ComposedChart data={last8} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
+                        <XAxis
+                          dataKey="weekLabel"
+                          tick={{ fontSize: 10, fill: '#737373' }}
+                          axisLine={{ stroke: '#e5e5e5' }}
+                          tickLine={false}
+                          interval={0}
+                          tickFormatter={(v) => v ? v.replace(/^\d{4}\./, '').replace('월', '/').replace('주차', '주') : ''}
+                        />
+                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
+                        <Tooltip
+                          contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                          labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
+                          itemStyle={{ color: '#fafafa' }}
+                          formatter={(v, name) => name === 'CPA' ? fmtKRW(v) : v + '건'}
+                        />
+                        <Bar yAxisId="left" dataKey="totalConversions" name="총 전환" radius={[4, 4, 0, 0]}>
+                          {last8.map((row) => (
+                            <Cell key={row.weekStart} fill={row.weekStart === thisWeekStart ? '#10b981' : '#1f2937'} />
+                          ))}
+                        </Bar>
+                        <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* SECONDARY METRICS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <MiniStat
+                  label="광고비"
+                  value={thisWeekAd ? fmtKRWM(thisWeekAd.cost) : '—'}
+                  delta={thisWeekAd && lastWeekAd ? <Delta curr={thisWeekAd.cost} prev={lastWeekAd.cost} invert /> : null}
+                  sub={thisWeekAd ? 'CPA ' + (thisWeekAd.cpa ? fmtKRW(thisWeekAd.cpa) : '—') : '입력 필요'}
+                  icon={Wallet}
+                />
+              </Card>
+              <Card>
+                <MiniStat
+                  label="콜드 발송 (이번 주)"
                   value={fmtNum(weeklyStageChange.thisWeek.sent)}
                   unit="곳"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.sent} prev={weeklyStageChange.lastWeek.sent} unit="곳" />}
-                  sub={'누적 ' + funnelCumulative.sent + ' / ' + leads.length}
-                  color="#eab308"
+                  delta={<Delta curr={weeklyStageChange.thisWeek.sent} prev={weeklyStageChange.lastWeek.sent} unit="곳" small />}
+                  sub={`누적 ${funnelCumulative.sent} / ${leads.length} (${fmtPct(funnelCumulative.sent / (leads.length || 1))})`}
+                  accent="#eab308"
+                  icon={Users}
                 />
-                <MetricCard
-                  label="회신"
-                  value={fmtNum(weeklyStageChange.thisWeek.replied)}
+              </Card>
+              <Card>
+                <MiniStat
+                  label="미팅 성사 (이번 주)"
+                  value={fmtNum(weeklyStageChange.thisWeek.meeting + weeklyStageChange.thisWeek.won)}
                   unit="건"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.replied} prev={weeklyStageChange.lastWeek.replied} unit="건" />}
-                  sub={'누적 ' + funnelCumulative.replied + '건'}
-                  color="#f97316"
+                  delta={<Delta curr={weeklyStageChange.thisWeek.meeting + weeklyStageChange.thisWeek.won} prev={weeklyStageChange.lastWeek.meeting + weeklyStageChange.lastWeek.won} unit="건" small />}
+                  sub={`누적 미팅 ${funnelCumulative.meeting} · 성사 ${funnelCumulative.won}`}
+                  accent="#10b981"
+                  icon={Check}
                 />
-                <MetricCard
-                  label="미팅"
-                  value={fmtNum(weeklyStageChange.thisWeek.meeting)}
-                  unit="건"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.meeting} prev={weeklyStageChange.lastWeek.meeting} unit="건" />}
-                  sub={'누적 ' + funnelCumulative.meeting + '건'}
-                  color="#3b82f6"
-                />
-                <MetricCard
-                  label="성사"
-                  value={fmtNum(weeklyStageChange.thisWeek.won)}
-                  unit="건"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.won} prev={weeklyStageChange.lastWeek.won} unit="건" />}
-                  sub={'누적 ' + funnelCumulative.won + '건'}
-                  color="#10b981"
-                />
-              </div>
-            </section>
+              </Card>
+            </div>
 
-            {/* 퍼널 요약 */}
-            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <SectionTitle subtitle="리스트에서 가장 진행된 단계 기준 누적">현재 파이프라인 상태</SectionTitle>
-              <div className="grid grid-cols-5 gap-0 mt-4">
+            {/* HEADLINE (간단 요약) */}
+            <Card className="p-5 bg-neutral-900 text-white">
+              <div className="flex items-start gap-3">
+                <div className="w-1 h-12 bg-emerald-400 rounded-full shrink-0 mt-1" />
+                <div>
+                  <div className="text-xs text-emerald-300 font-semibold uppercase tracking-[0.2em] mb-1">이번 주 헤드라인</div>
+                  <h2 className="text-lg font-bold leading-snug">{headline}</h2>
+                </div>
+              </div>
+            </Card>
+
+            {/* 파이프라인 현황 */}
+            <Card className="p-6">
+              <SectionTitle
+                subtitle="리스트에서 가장 진행된 단계 기준 누적"
+                right={<button onClick={() => setTab('leads')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">전체 리스트 →</button>}
+              >
+                콜드 파이프라인
+              </SectionTitle>
+              <div className="grid grid-cols-5 gap-2">
                 {[
                   { label: '전체 리드', count: leads.length, color: '#525252' },
-                  { label: '발송 완료', count: funnelCumulative.sent, color: '#eab308' },
-                  { label: '회신 받음', count: funnelCumulative.replied, color: '#f97316' },
-                  { label: '미팅 진행', count: funnelCumulative.meeting, color: '#3b82f6' },
-                  { label: '성사', count: funnelCumulative.won, color: '#10b981' },
+                  { label: '발송',     count: funnelCumulative.sent,     color: '#eab308' },
+                  { label: '회신',     count: funnelCumulative.replied,  color: '#f97316' },
+                  { label: '미팅',     count: funnelCumulative.meeting,  color: '#3b82f6' },
+                  { label: '성사',     count: funnelCumulative.won,      color: '#10b981' },
                 ].map((s, i, arr) => {
-                  const prev = i === 0 ? null : arr[i-1];
+                  const prev = i === 0 ? null : arr[i - 1];
                   const rate = prev && prev.count > 0 ? (s.count / prev.count) : null;
                   return (
-                    <div key={s.label} className={'px-4 py-2 ' + (i > 0 ? 'border-l border-neutral-100' : '')}>
-                      <div className="text-xs text-neutral-500 font-semibold mb-2">{s.label}</div>
-                      <div className="font-bold tabular-nums" style={{ fontSize: 36, lineHeight: 1, color: s.color }}>
-                        {fmtNum(s.count)}
-                      </div>
-                      {rate != null && (
-                        <div className="mt-2 text-xs text-neutral-500">
-                          <span className="font-semibold text-neutral-900">{fmtPct(rate)}</span>
-                        </div>
-                      )}
-                      {i === 0 && (
-                        <div className="mt-2 text-xs text-neutral-500">타겟 리스트</div>
-                      )}
+                    <div key={s.label} className="p-3 rounded-lg bg-neutral-50">
+                      <div className="text-xs text-neutral-500 font-semibold mb-1.5">{s.label}</div>
+                      <div className="font-bold tabular-nums" style={{ fontSize: 28, lineHeight: 1, color: s.color }}>{fmtNum(s.count)}</div>
+                      {rate != null && <div className="text-[11px] text-neutral-500 mt-1">→ {fmtPct(rate)}</div>}
                     </div>
                   );
                 })}
               </div>
-              <div className="mt-6 pt-6 border-t border-neutral-100">
-                <div className="text-xs text-neutral-500 mb-2">발송 진척도</div>
-                <div className="h-2.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div className="mt-4">
+                <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
                   <div className="h-full bg-yellow-400 rounded-full transition-all duration-700" style={{ width: ((funnelCumulative.sent / (leads.length || 1)) * 100) + '%' }} />
                 </div>
-                <div className="mt-2 text-xs text-neutral-600">
-                  <span className="font-semibold">{funnelCumulative.sent}</span>
-                  <span className="text-neutral-400"> / </span>
-                  <span>{leads.length}</span>
-                  <span className="text-neutral-500 ml-2">({fmtPct(funnelCumulative.sent / (leads.length || 1))})</span>
-                  <span className="text-neutral-400 ml-4">· 미발송 {leads.length - funnelCumulative.sent}곳</span>
+                <div className="mt-1.5 text-xs text-neutral-500">
+                  <span className="font-semibold text-neutral-900">{funnelCumulative.sent}</span>
+                  <span className="text-neutral-400"> / {leads.length}</span>
+                  <span className="ml-2">발송 진척 {fmtPct(funnelCumulative.sent / (leads.length || 1))}</span>
                 </div>
               </div>
-            </section>
+            </Card>
 
-            {/* 광고는 요약만 */}
-            <section>
+            {/* 오가닉 요약 */}
+            <Card className="p-6">
               <SectionTitle
-                subtitle={weeklyRowThisWeek
-                  ? '엑셀 주간 집계 · 총 전환 = 카리스 애드 + 유선 + 채널톡 (실제 문의/성과)'
-                  : '주간 행이 없으면 아래 숫자는 일별 매체 시드 합산입니다'}
-                right={
-                  <button onClick={() => setTab('ads')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">
-                    주간 표·붙여넣기 →
-                  </button>
-                }
+                subtitle="자연 유입 · 매일 기록하면 여기에 반영"
+                right={<button onClick={() => setTab('input')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">기록하기 →</button>}
               >
-                자사 광고 · 이번 주
-              </SectionTitle>
-              {weeklyRowThisWeek ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <MetricCard
-                    label="총 전환수 (실)"
-                    value={fmtNum(weeklyRowThisWeek.totalConversions)}
-                    unit="건"
-                    delta={weeklyRowLastWeek
-                      ? <Delta curr={weeklyRowThisWeek.totalConversions} prev={weeklyRowLastWeek.totalConversions} unit="건" />
-                      : <span className="text-xs text-neutral-400">— 전주 행 없음</span>}
-                    sub={'GA 광고전환 ' + fmtNum(weeklyRowThisWeek.adConversions) + ' · 애드 ' + fmtNum(weeklyRowThisWeek.convCarisAds) + ' · 유선 ' + fmtNum(weeklyRowThisWeek.convPhone) + ' · 채널톡 ' + fmtNum(weeklyRowThisWeek.convChannelTalk)}
-                    color="#059669"
-                  />
-                  <MetricCard
-                    label="총 광고비"
-                    value={fmtKRWM(weeklyRowThisWeek.cost)}
-                    delta={weeklyRowLastWeek
-                      ? <Delta curr={weeklyRowThisWeek.cost} prev={weeklyRowLastWeek.cost} invert />
-                      : <span className="text-xs text-neutral-400">—</span>}
-                  />
-                  <MetricCard
-                    label="CPA (총비÷총전환)"
-                    value={fmtKRW(weeklyRowThisWeek.cpa)}
-                    delta={weeklyRowLastWeek && weeklyRowLastWeek.cpa
-                      ? <Delta curr={weeklyRowThisWeek.cpa} prev={weeklyRowLastWeek.cpa} invert />
-                      : <span className="text-xs text-neutral-400">—</span>}
-                    sub="낮을수록 유리"
-                  />
-                </div>
-              ) : (
-                <>
-                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                    주간 표에 <strong>{thisWeekStart}</strong> 행이 없습니다. 「자사 광고」탭에서 엑셀을 붙여넣으면 <strong>총 전환</strong> 기준 요약이 여기 표시됩니다.
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <MetricCard
-                      label="광고 전환 (일별 합)"
-                      value={fmtNum(adsThisWeek.conv)}
-                      unit="건"
-                      delta={<Delta curr={adsThisWeek.conv} prev={adsLastWeek.conv} unit="건" />}
-                      color="#059669"
-                    />
-                    <MetricCard
-                      label="광고비 (일별 합)"
-                      value={fmtKRWM(adsThisWeek.cost)}
-                      delta={<Delta curr={adsThisWeek.cost} prev={adsLastWeek.cost} invert />}
-                      sub={adsThisWeek.conv ? 'CPA ' + fmtKRW(Math.round(adsThisWeek.cost / adsThisWeek.conv)) : 'CPA —'}
-                    />
-                    <MetricCard
-                      label="클릭 (일별 합)"
-                      value={fmtNum(adsThisWeek.clicks)}
-                      unit="회"
-                      delta={<Delta curr={adsThisWeek.clicks} prev={adsLastWeek.clicks} unit="회" />}
-                      sub={'CTR ' + fmtPct(adsThisWeek.imp ? adsThisWeek.clicks / adsThisWeek.imp : 0, 2)}
-                    />
-                  </div>
-                  {adsThisWeek.conv === 0 && adsThisWeek.cost === 0 && (
-                    <div className="mt-3 text-xs text-neutral-500 bg-neutral-100 rounded-lg px-4 py-2">
-                      일별 시드에도 이번 구간 데이터가 거의 없습니다.
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-
-            {/* 오가닉 매체 요약 */}
-            <section>
-              <SectionTitle
-                subtitle="자연 유입 채널 · 매일 기록한 조회수 합산"
-                right={
-                  <button onClick={() => setTab('organic')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">
-                    기록·관리 →
-                  </button>
-                }
-              >
-                오가닉 매체 · 이번 주
+                오가닉 유입 (이번 주)
               </SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <MetricCard
-                  label="네이버 블로그"
-                  value={fmtNum(blogThisWeek)}
-                  unit="회"
-                  delta={<Delta curr={blogThisWeek} prev={blogLastWeek} unit="회" />}
-                  sub={'누적 ' + fmtNum(blogAllTime) + '회'}
-                  color="#03C75A"
-                />
-                <MetricCard
-                  label="링크드인"
-                  value={fmtNum(linkedinThisWeek)}
-                  unit="회"
-                  delta={<Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" />}
-                  sub={linkedin.length === 0 ? '아직 기록 없음' : '누적 ' + fmtNum(linkedinAllTime) + '회'}
-                  color="#0A66C2"
-                />
+                <div className="p-4 rounded-xl bg-green-50 border border-green-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-xs font-semibold text-green-800 uppercase tracking-wider">네이버 블로그</span>
+                  </div>
+                  <div className="text-3xl font-bold tabular-nums text-green-700">{fmtNum(blogThisWeek)}<span className="text-sm text-green-600 ml-1 font-normal">회</span></div>
+                  <div className="mt-1.5"><Delta curr={blogThisWeek} prev={blogLastWeek} unit="회" small /></div>
+                </div>
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600" />
+                    <span className="text-xs font-semibold text-blue-800 uppercase tracking-wider">링크드인</span>
+                  </div>
+                  <div className="text-3xl font-bold tabular-nums text-blue-700">{fmtNum(linkedinThisWeek)}<span className="text-sm text-blue-600 ml-1 font-normal">회</span></div>
+                  <div className="mt-1.5"><Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" small /></div>
+                </div>
               </div>
-            </section>
+            </Card>
+
+            <Card className="p-6 ring-1 ring-neutral-100 shadow-sm">
+              <SectionTitle
+                subtitle="일별 N/G/M 시트를 앱에 옮긴 합계(이번 주 월~오늘) · 앵커 날짜는 입력 탭에서 수정"
+                right={<button type="button" onClick={() => { setTab('input'); setTimeout(() => document.getElementById('hub-daily')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">일별 시트 →</button>}
+              >
+                일별 매체 (이번 주)
+              </SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { ch: 'N', label: '네이버', dot: 'bg-emerald-500', box: 'bg-emerald-50 border-emerald-100', t: 'text-emerald-900' },
+                  { ch: 'G', label: '구글', dot: 'bg-blue-500', box: 'bg-blue-50 border-blue-100', t: 'text-blue-900' },
+                  { ch: 'M', label: '메타', dot: 'bg-indigo-500', box: 'bg-indigo-50 border-indigo-100', t: 'text-indigo-900' },
+                ].map(({ ch, label, dot, box, t }) => {
+                  const x = dailyThisWeekTotals[ch];
+                  return (
+                    <div key={ch} className={'rounded-xl border p-4 ' + box}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={'w-2 h-2 rounded-full ' + dot} />
+                        <span className={'text-xs font-bold uppercase tracking-wider ' + t}>{label}</span>
+                      </div>
+                      <div className={'text-lg font-bold tabular-nums ' + t}>{fmtKRWM(x.co)}</div>
+                      <div className="text-[11px] text-neutral-500 mt-1">노출 {fmtNum(x.imp)} · 클릭 {fmtNum(x.clk)} · 전환 {fmtNum(x.cv)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           </div>
         )}
 
-        {/* ═════════ TAB: 콜드 리스트 ═════════ */}
+        {/* ═══════════════════════════════════ TAB: 콜드 리스트 ═══════════════════════════════════ */}
         {tab === 'leads' && (
-          <div className="space-y-6">
-
-            {/* 상단 필터 & 현황 요약 */}
-            <section className="bg-white rounded-2xl p-6 border border-neutral-200">
-              <div className="flex items-center justify-between mb-4">
+          <div className="space-y-5">
+            <Card id="hub-leads" className="p-6 scroll-mt-28">
+              <div className="flex items-start justify-between mb-5 gap-4">
                 <div>
                   <h2 className="text-xl font-bold">콜드 아웃바운드 리스트</h2>
-                  <p className="text-sm text-neutral-500 mt-1">
-                    각 브랜드의 단계를 선택하면 이번 주 카드에 바로 반영됩니다
-                  </p>
+                  <p className="text-sm text-neutral-500 mt-1">단계 변경은 즉시 저장되며, 우측 <span className="font-semibold text-neutral-700">편집</span>에서 국가·이메일·플랫폼을 시트처럼 수정할 수 있습니다.</p>
                 </div>
                 <button
-                  onClick={() => setShowAddForm(v => !v)}
-                  className={'px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors ' +
-                    (showAddForm ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300' : 'bg-neutral-900 text-white hover:bg-neutral-800')}
+                  onClick={() => setShowAddBrand(v => !v)}
+                  className={'px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0 ' +
+                    (showAddBrand ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300' : 'bg-neutral-900 text-white hover:bg-neutral-800')}
                 >
-                  <Plus size={16} /> {showAddForm ? '취소' : '브랜드 추가'}
+                  {showAddBrand ? <><X size={16} /> 취소</> : <><Plus size={16} /> 브랜드 추가</>}
                 </button>
               </div>
 
-              {/* 추가 폼 (토글) */}
-              {showAddForm && (
-                <div className="mb-4 p-5 bg-neutral-50 rounded-xl border border-neutral-200">
+              {showAddBrand && (
+                <div className="mb-5 p-5 bg-neutral-50 rounded-xl border border-neutral-200">
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div>
-                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">
-                        브랜드명 <span className="text-red-500">*</span>
-                      </label>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">브랜드명 <span className="text-red-500">*</span></label>
                       <input
                         value={newBrand.brand}
                         onChange={e => setNewBrand({ ...newBrand, brand: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') addBrand(); }}
                         autoFocus
                         placeholder="예) Torriden"
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">
-                        타겟 국가
-                      </label>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">타겟 국가</label>
                       <input
                         value={newBrand.countries}
                         onChange={e => setNewBrand({ ...newBrand, countries: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') addBrand(); }}
-                        placeholder="예) Vietnam, Thailand"
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors"
+                        placeholder="Vietnam, Thailand"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
                       />
-                      <div className="text-[11px] text-neutral-400 mt-1">쉼표(,)로 구분</div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">
-                        이메일
-                      </label>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">이메일</label>
                       <input
                         value={newBrand.email}
                         onChange={e => setNewBrand({ ...newBrand, email: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') addBrand(); }}
-                        placeholder="예) global@brand.com"
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors"
+                        placeholder="global@brand.com"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">
-                        플랫폼
-                      </label>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">플랫폼</label>
                       <input
                         value={newBrand.platform}
                         onChange={e => setNewBrand({ ...newBrand, platform: e.target.value })}
                         onKeyDown={e => { if (e.key === 'Enter') addBrand(); }}
-                        placeholder="예) Shopee / Lazada"
-                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors"
+                        placeholder="Shopee / Lazada"
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
                       />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
-                    <div className="text-xs text-neutral-500">
-                      추가하면 <span className="font-semibold text-neutral-700">미발송</span> 단계로 들어갑니다
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { setShowAddForm(false); setNewBrand({ brand:'', countries:'', email:'', platform:'' }); }}
-                        className="px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-200 transition-colors"
-                      >
-                        취소
-                      </button>
-                      <button
-                        onClick={addBrand}
-                        disabled={!newBrand.brand.trim()}
-                        className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors"
-                      >
-                        리스트에 추가
-                      </button>
-                    </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={addBrand}
+                      disabled={!newBrand.brand.trim()}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300"
+                    >
+                      리스트에 추가
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* 단계별 카운트 필터 */}
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-3">
                 <button
                   onClick={() => setFilterStage('all')}
-                  className={'px-3 py-2 rounded-lg text-xs font-semibold transition-colors ' +
+                  className={'px-3 py-1.5 rounded-lg text-xs font-semibold ' +
                     (filterStage === 'all' ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200')}
                 >
                   전체 {leads.length}
@@ -964,7 +1034,7 @@ export default function Dashboard() {
                   <button
                     key={s.id}
                     onClick={() => setFilterStage(s.id)}
-                    className={'px-3 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ' +
+                    className={'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ' +
                       (filterStage === s.id ? s.bg + ' ' + s.text : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200')}
                   >
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
@@ -973,28 +1043,29 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              {/* 검색 */}
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="브랜드 검색…"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-neutral-200 text-sm outline-none focus:border-neutral-900 transition-colors"
+                  placeholder="브랜드 검색"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-neutral-200 text-sm outline-none focus:border-neutral-900"
                 />
               </div>
-            </section>
+            </Card>
 
-            {/* 리스트 */}
-            <section className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-              <div className="max-h-[720px] overflow-y-auto">
+            <Card className="overflow-hidden">
+              <div className="max-h-[680px] overflow-y-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200 z-10">
                     <tr className="text-xs text-neutral-600 font-semibold">
                       <th className="text-left px-5 py-3 w-12">#</th>
                       <th className="text-left px-5 py-3">브랜드</th>
+                      <th className="text-left px-4 py-3 w-14">등급</th>
                       <th className="text-left px-5 py-3">국가</th>
-                      <th className="text-left px-5 py-3">단계 (클릭해서 변경)</th>
+                      <th className="text-left px-5 py-3">단계</th>
+                      <th className="text-right px-4 py-3 w-24">편집</th>
+                      <th className="px-3 py-3 w-10" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
@@ -1002,7 +1073,7 @@ export default function Dashboard() {
                       const current = brandStages[l.brand]?.stage || 'pending';
                       const updatedAt = brandStages[l.brand]?.updatedAt;
                       return (
-                        <tr key={l.brand + '-' + i} className="hover:bg-neutral-50/50 transition-colors">
+                        <tr key={l.brand + '-' + i} className="hover:bg-neutral-50/50 group transition-colors">
                           <td className="px-5 py-3 text-neutral-400 tabular-nums text-xs">{String(i + 1).padStart(3, '0')}</td>
                           <td className="px-5 py-3">
                             <div className="font-semibold text-neutral-900">{l.brand}</div>
@@ -1011,24 +1082,46 @@ export default function Dashboard() {
                             ) : (
                               <div className="text-xs text-neutral-400 mt-0.5 italic">이메일 없음</div>
                             )}
-                            {updatedAt && (
-                              <div className="text-xs text-neutral-400 mt-1">최근 변경: {updatedAt}</div>
-                            )}
+                            {updatedAt && <div className="text-xs text-neutral-400 mt-1">최근 변경: {updatedAt}</div>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex min-w-[2rem] justify-center text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 border border-neutral-200">
+                              {l.priority || '—'}
+                            </span>
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.countries.map(c => (
-                                <span key={c} className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">
-                                  {c}
-                                </span>
+                                <span key={c} className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">{c}</span>
                               ))}
                             </div>
                           </td>
                           <td className="px-5 py-3">
-                            <StageSelector
-                              current={current}
-                              onChange={(newStage) => setStage(l.brand, newStage)}
-                            />
+                            <StageSelector current={current} onChange={(ns) => setStage(l.brand, ns)} />
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setLeadEdit({
+                                brand: l.brand,
+                                priority: l.priority || '',
+                                countries: (l.countries || []).join(', '),
+                                platform: l.platform || '',
+                                email: l.email || '',
+                              })}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-neutral-600 border border-neutral-200 hover:bg-neutral-50 hover:border-neutral-300"
+                            >
+                              <Pencil size={12} /> 편집
+                            </button>
+                          </td>
+                          <td className="px-3 py-3">
+                            <button
+                              onClick={() => deleteBrand(l.brand)}
+                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="브랜드 삭제"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1036,287 +1129,415 @@ export default function Dashboard() {
                   </tbody>
                 </table>
                 {filteredLeads.length === 0 && (
-                  <div className="text-center py-12 text-sm text-neutral-500">
-                    조건에 맞는 브랜드가 없습니다
-                  </div>
+                  <div className="text-center py-16 text-sm text-neutral-500">조건에 맞는 브랜드가 없습니다</div>
                 )}
               </div>
-            </section>
+            </Card>
           </div>
         )}
 
-        {/* ═════════ TAB: 자사 광고 ═════════ */}
-        {tab === 'ads' && (
-          <div className="space-y-8">
-            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <SectionTitle subtitle="총 전환수 = 카리스 애드 + 유선 + 채널톡 · CPA = 총 광고비 ÷ 총 전환수">
-                주간 광고 집계 (엑셀)
-              </SectionTitle>
-              <p className="text-sm text-neutral-600 mb-6">
-                <strong className="text-neutral-800">광고 전환</strong>(GA/매체)과 <strong className="text-neutral-800">총 전환수</strong>(실제 문의·성과)은 다릅니다.
-                주간 성과는 <strong>총 전환</strong>과 <strong>CPA</strong>를 기준으로 보시면 됩니다.
-              </p>
+        {/* ═══════════════════════════════════ TAB: 데이터 입력 ═══════════════════════════════════ */}
+        {tab === 'input' && (
+          <div className="space-y-6">
 
-              <div className="h-80 mb-8">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={weeklyChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
-                    <XAxis dataKey="shortLabel" tick={{ fontSize: 11, fill: '#737373' }} axisLine={{ stroke: '#e5e5e5' }} tickLine={false} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
-                    <Tooltip
-                      contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                      labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
-                      itemStyle={{ color: '#fafafa' }}
-                      formatter={(v, name) => (name === '총 광고비' ? fmtKRW(v) : v + '건')}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
-                    <Bar yAxisId="left" dataKey="convCarisAds" stackId="c" fill="#059669" name="카리스 애드" />
-                    <Bar yAxisId="left" dataKey="convPhone" stackId="c" fill="#6366f1" name="유선" />
-                    <Bar yAxisId="left" dataKey="convChannelTalk" stackId="c" fill="#f59e0b" name="채널톡" />
-                    <Bar yAxisId="left" dataKey="convOther" stackId="c" fill="#d4d4d4" name="기타(잔차)" />
-                    <Line yAxisId="right" type="monotone" dataKey="cost" name="총 광고비" stroke="#0a0a0a" strokeWidth={1.5} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+            <div className="flex items-start gap-3 p-4 sm:p-5 bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-100 rounded-2xl shadow-sm">
+              <Info size={20} className="text-sky-600 shrink-0 mt-0.5" />
+              <div className="text-sm text-sky-950">
+                <p className="font-bold text-base mb-1">시트를 앱으로 옮겼습니다</p>
+                <p className="text-sky-900/85 leading-relaxed">
+                  아래 블록 순서대로만 채우면 됩니다. <span className="font-semibold">저장됨</span>이 뜨면 Vercel KV에 반영된 것이며,{' '}
+                  <span className="font-semibold">이번 주</span> 탭의 NSM·차트·오가닉 요약이 자동으로 갱신됩니다. (엑셀 붙여넣기는 보조용입니다.)
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                { id: 'hub-weekly', title: '1. 주간 NSM', desc: '주간 총전환·광고비', color: 'from-neutral-800 to-neutral-700' },
+                { id: 'hub-daily', title: '2. 일별 N/G/M', desc: '매체별 일 단위 시트', color: 'from-amber-700 to-orange-700' },
+                { id: 'hub-organic', title: '3. 오가닉', desc: '블로그·링크드인', color: 'from-emerald-700 to-teal-700' },
+                { id: 'hub-leads', title: '4. 콜드 리스트', desc: '리드·단계', color: 'from-violet-700 to-purple-700', tab: 'leads' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    if (c.tab) setTab(c.tab);
+                    else document.getElementById(c.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  className={'text-left rounded-2xl p-4 text-white bg-gradient-to-br shadow-md hover:opacity-95 transition-opacity ' + c.color}
+                >
+                  <div className="text-xs font-semibold uppercase tracking-wider opacity-80">바로가기</div>
+                  <div className="text-lg font-bold mt-1">{c.title}</div>
+                  <div className="text-xs mt-1.5 opacity-90 leading-snug">{c.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* ─── 주간 광고 직접 입력 ─── */}
+            <Card id="hub-weekly" className="p-6 scroll-mt-28 ring-1 ring-neutral-100 shadow-sm">
+              <SectionTitle subtitle="한 주 = 한 행 · 빈 칸은 0으로 처리 · 같은 주 재입력 시 덮어쓰기">
+                주간 광고 성과 (NSM 입력)
+              </SectionTitle>
+
+              <div className="grid grid-cols-12 gap-3 mb-3">
+                <div className="col-span-3">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">주 시작일 (월요일)</label>
+                  <input
+                    type="date"
+                    value={newAdRow.weekStart}
+                    onChange={e => setNewAdRow({ ...newAdRow, weekStart: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">라벨 (선택)</label>
+                  <input
+                    value={newAdRow.weekLabel}
+                    onChange={e => setNewAdRow({ ...newAdRow, weekLabel: e.target.value })}
+                    placeholder="2026.4월 3주차"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">노출</label>
+                  <input
+                    type="number"
+                    value={newAdRow.impressions}
+                    onChange={e => setNewAdRow({ ...newAdRow, impressions: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">클릭</label>
+                  <input
+                    type="number"
+                    value={newAdRow.clicks}
+                    onChange={e => setNewAdRow({ ...newAdRow, clicks: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">총 광고비 (₩)</label>
+                  <input
+                    type="number"
+                    value={newAdRow.cost}
+                    onChange={e => setNewAdRow({ ...newAdRow, cost: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-neutral-200 mb-6">
-                <table className="min-w-[1100px] w-full text-sm">
-                  <thead>
-                    <tr className="bg-neutral-50 text-left text-xs font-semibold text-neutral-600 border-b border-neutral-200">
-                      <th className="px-3 py-2 whitespace-nowrap">시작(월)</th>
-                      <th className="px-3 py-2 whitespace-nowrap">연/월/주차</th>
-                      <th className="px-3 py-2 text-right">노출</th>
-                      <th className="px-3 py-2 text-right">클릭</th>
-                      <th className="px-3 py-2 text-right">광고 전환</th>
-                      <th className="px-3 py-2 text-right">CTR</th>
-                      <th className="px-3 py-2 text-right">CPC</th>
-                      <th className="px-3 py-2 text-right">총 광고비</th>
-                      <th className="px-3 py-2 text-right">애드</th>
-                      <th className="px-3 py-2 text-right">유선</th>
-                      <th className="px-3 py-2 text-right">채널톡</th>
-                      <th className="px-3 py-2 text-right font-bold text-neutral-900">총 전환</th>
-                      <th className="px-3 py-2 text-right">CPA</th>
+              <div className="bg-neutral-50 rounded-xl p-4 mb-3">
+                <div className="text-xs font-semibold text-neutral-600 mb-2">전환 내역 (총 전환 = 카리스 애드 + 유선 + 채널톡)</div>
+                <div className="grid grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.carisAds }}>
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.carisAds }} />
+                      카리스 애드
+                    </label>
+                    <input
+                      type="number"
+                      value={newAdRow.convCarisAds}
+                      onChange={e => setNewAdRow({ ...newAdRow, convCarisAds: e.target.value })}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.phone }}>
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.phone }} />
+                      유선
+                    </label>
+                    <input
+                      type="number"
+                      value={newAdRow.convPhone}
+                      onChange={e => setNewAdRow({ ...newAdRow, convPhone: e.target.value })}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.channelTalk }}>
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.channelTalk }} />
+                      채널톡
+                    </label>
+                    <input
+                      type="number"
+                      value={newAdRow.convChannelTalk}
+                      onChange={e => setNewAdRow({ ...newAdRow, convChannelTalk: e.target.value })}
+                      placeholder="0"
+                      className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                    />
+                  </div>
+                  <div>
+                    <div className="block text-xs font-semibold text-neutral-600 mb-1">= 총 전환 (자동)</div>
+                    <div className="px-3 py-2 rounded-lg bg-neutral-900 text-white text-sm font-bold tabular-nums text-center">
+                      {(parseInt(newAdRow.convCarisAds, 10) || 0) + (parseInt(newAdRow.convPhone, 10) || 0) + (parseInt(newAdRow.convChannelTalk, 10) || 0)}건
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-neutral-500">
+                  같은 주를 다시 입력하면 <span className="font-semibold">덮어씁니다</span>. CTR / CPC / CPA는 자동 계산됩니다.
+                </div>
+                <button
+                  onClick={addWeeklyAdRow}
+                  className="px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-lg text-sm flex items-center gap-2"
+                >
+                  <Plus size={16} /> 주간 데이터 저장
+                </button>
+              </div>
+
+              {pasteMsg && (
+                <div className={'mt-3 px-4 py-2 rounded-lg text-sm font-medium ' +
+                  (pasteMsg.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
+                  {pasteMsg.text}
+                </div>
+              )}
+
+              {/* 엑셀 붙여넣기 (접이식) */}
+              <details className="mt-5 border-t border-neutral-100 pt-5">
+                <summary className="cursor-pointer text-xs font-semibold text-neutral-500 hover:text-neutral-800 select-none">
+                  엑셀 표 한 번에 붙여넣기 (대량 입력)
+                </summary>
+                <div className="mt-3">
+                  <p className="text-xs text-neutral-500 mb-2">헤더 포함 13열. 탭 구분된 엑셀 행을 그대로 복사 → 붙여넣기</p>
+                  <textarea
+                    value={pasteText}
+                    onChange={e => setPasteText(e.target.value)}
+                    rows={6}
+                    placeholder="2026-04-13	2026.4월 3주차	15000	200	3	1.33%	₩8000	₩1600000	5	1	2	8	₩200000"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-xs font-mono outline-none focus:border-neutral-900 resize-y"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={applyPaste}
+                      disabled={!pasteText.trim()}
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300"
+                    >
+                      붙여넣기 적용
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </Card>
+
+            <Card id="hub-daily" className="p-6 scroll-mt-28 ring-1 ring-amber-100 shadow-sm bg-gradient-to-b from-amber-50/40 to-white">
+              <SectionTitle subtitle={`행 ${dailyAdRows.length}건 · 날짜 = 기준일 + 오프셋(o) · 기준일: ${dailyAdsAnchor}`}>
+                일별 매체 시트 (네이버 · 구글 · 메타)
+              </SectionTitle>
+              <p className="text-xs text-neutral-600 mb-4 leading-relaxed">
+                엑셀에서 쓰던 일 단위 시트를 여기로 옮겼습니다. 셀을 수정하면 자동 저장됩니다. 기준일을 바꾸면 같은 o라도 달력 열에 표시되는 날짜가 바뀌므로, 엑셀과 맞출 때만 조정하세요.
+              </p>
+
+              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-white rounded-xl border border-amber-100">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">기준일 (o=0)</label>
+                  <input
+                    type="date"
+                    value={dailyAdsAnchor}
+                    onChange={e => setDailyAdsAnchor(e.target.value)}
+                    className="px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'all', label: '전체' },
+                    { id: 'N', label: '네이버' },
+                    { id: 'G', label: '구글' },
+                    { id: 'M', label: '메타' },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setDailyChannelFilter(f.id)}
+                      className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ' +
+                        (dailyChannelFilter === f.id ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-300')}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-neutral-50 rounded-xl border border-neutral-200">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">매체</label>
+                  <select
+                    value={newDaily.ch}
+                    onChange={e => setNewDaily({ ...newDaily, ch: e.target.value })}
+                    className="px-3 py-2 rounded-lg border border-neutral-300 text-sm bg-white outline-none focus:border-neutral-900"
+                  >
+                    <option value="N">네이버 (N)</option>
+                    <option value="G">구글 (G)</option>
+                    <option value="M">메타 (M)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">날짜</label>
+                  <input
+                    type="date"
+                    value={newDaily.date}
+                    onChange={e => setNewDaily({ ...newDaily, date: e.target.value })}
+                    className="px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addDailyRowFromForm}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 text-white hover:bg-amber-500"
+                >
+                  행 추가
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-neutral-200 overflow-hidden bg-white">
+                <div className="max-h-[420px] sm:max-h-[50vh] overflow-y-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200 z-[1]">
+                      <tr className="text-left text-neutral-600 font-semibold">
+                        <th className="px-3 py-2.5">날짜</th>
+                        <th className="px-2 py-2.5 w-10">매체</th>
+                        <th className="px-2 py-2.5">o</th>
+                        <th className="px-2 py-2.5 text-right">노출</th>
+                        <th className="px-2 py-2.5 text-right">클릭</th>
+                        <th className="px-2 py-2.5 text-right">전환</th>
+                        <th className="px-2 py-2.5 text-right">비용(₩)</th>
+                        <th className="px-2 py-2.5 w-10" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100">
+                      {filteredDailyRows.map(r => {
+                        const d = dateForOffset(dailyAdsAnchor, r.o);
+                        return (
+                          <tr key={r.ch + '-' + r.o} className="hover:bg-neutral-50/80 group">
+                            <td className="px-3 py-1.5 tabular-nums text-neutral-700 whitespace-nowrap">{d}</td>
+                            <td className="px-2 py-1.5 font-bold text-neutral-800">{r.ch}</td>
+                            <td className="px-2 py-1.5 tabular-nums text-neutral-400">{r.o}</td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.imp}
+                                onChange={e => setDailyField(r.ch, r.o, 'imp', e.target.value)}
+                                className="w-full min-w-[4.5rem] max-w-[7rem] ml-auto text-right px-2 py-1 rounded border border-neutral-200 tabular-nums"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.clk}
+                                onChange={e => setDailyField(r.ch, r.o, 'clk', e.target.value)}
+                                className="w-full min-w-[4rem] max-w-[6rem] ml-auto text-right px-2 py-1 rounded border border-neutral-200 tabular-nums"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.cv}
+                                onChange={e => setDailyField(r.ch, r.o, 'cv', e.target.value)}
+                                className="w-full min-w-[4rem] max-w-[6rem] ml-auto text-right px-2 py-1 rounded border border-neutral-200 tabular-nums"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.co}
+                                onChange={e => setDailyField(r.ch, r.o, 'co', e.target.value)}
+                                className="w-full min-w-[5rem] max-w-[8rem] ml-auto text-right px-2 py-1 rounded border border-neutral-200 tabular-nums"
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => deleteDailyRow(r.ch, r.o)}
+                                className="p-1 text-neutral-400 hover:text-red-600 rounded opacity-60 group-hover:opacity-100"
+                                title="행 삭제"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Card>
+
+            {/* 저장된 주간 행 리스트 */}
+            <Card className="overflow-hidden">
+              <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold">저장된 주간 행 ({weeklyAdRows.length}주)</h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">최신 순 · 이번 주는 초록</p>
+                </div>
+              </div>
+              <div className="max-h-[400px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200">
+                    <tr className="text-xs text-neutral-600 font-semibold">
+                      <th className="text-left px-4 py-2.5">주 시작</th>
+                      <th className="text-left px-4 py-2.5">라벨</th>
+                      <th className="text-right px-4 py-2.5">광고비</th>
+                      <th className="text-right px-4 py-2.5 text-neutral-900">총 전환</th>
+                      <th className="text-right px-4 py-2.5">CPA</th>
+                      <th className="px-2 py-2.5 w-10" />
                     </tr>
                   </thead>
-                  <tbody>
-                    {weeklySorted.map((r) => (
-                      <tr key={r.weekStart} className="border-b border-neutral-100 hover:bg-neutral-50/80">
-                        <td className="px-3 py-2 font-mono text-xs text-neutral-700 whitespace-nowrap">{r.weekStart}</td>
-                        <td className="px-3 py-2 text-neutral-800 whitespace-nowrap">{r.weekLabel}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.impressions)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.clicks)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.adConversions)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{r.ctr != null ? fmtPct(r.ctr, 2) : '—'}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cpc)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cost)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convCarisAds)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convPhone)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.convChannelTalk)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-800">{fmtNum(r.totalConversions)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtKRW(r.cpa)}</td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-neutral-100">
+                    {[...weeklyAdRows].sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map((r, i) => {
+                      const isThisWeek = r.weekStart === thisWeekStart;
+                      return (
+                        <tr key={r.weekStart} className={'group hover:bg-neutral-50 ' + (isThisWeek ? 'bg-emerald-50/50' : '')}>
+                          <td className="px-4 py-2.5 tabular-nums text-xs">
+                            {r.weekStart}
+                            {isThisWeek && <span className="ml-1.5 text-[10px] font-bold text-emerald-600">이번 주</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-neutral-500">{r.weekLabel || '—'}</td>
+                          <td className="px-4 py-2.5 tabular-nums text-right">{fmtKRWM(r.cost)}</td>
+                          <td className="px-4 py-2.5 tabular-nums text-right font-bold text-neutral-900">{fmtNum(r.totalConversions)}</td>
+                          <td className="px-4 py-2.5 tabular-nums text-right text-xs">{r.cpa ? fmtKRWM(r.cpa) : '—'}</td>
+                          <td className="px-2 py-2.5">
+                            <button
+                              onClick={() => deleteWeeklyAdRow(r.weekStart)}
+                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+            </Card>
 
-              <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
-                <div className="text-xs font-semibold text-neutral-700 mb-2">엑셀에서 표 복사 → 아래에 붙여넣기 (탭 구분, 주 단위로 병합)</div>
-                <textarea
-                  value={weeklyPasteText}
-                  onChange={(e) => { setWeeklyPasteText(e.target.value); setWeeklyPasteMsg(null); }}
-                  rows={6}
-                  placeholder="첫 열: YYYY-MM-DD (주 시작일) …"
-                  className="w-full text-xs font-mono border border-neutral-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-300"
-                />
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <button
-                    type="button"
-                    onClick={mergeWeeklyPasteFromText}
-                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-neutral-900 text-white hover:bg-neutral-800"
-                  >
-                    붙여넣기 반영
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!confirm('주간 표만 초기 샘플 데이터로 되돌릴까요?')) return;
-                      setWeeklyAdRows(INITIAL_WEEKLY_AD_ROWS);
-                      setWeeklyPasteMsg({ type: 'ok', text: '주간 표를 초기 시드로 되돌렸습니다.' });
-                    }}
-                    className="px-4 py-2 text-sm font-semibold rounded-lg border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-                  >
-                    주간 표만 시드로 초기화
-                  </button>
-                </div>
-                {weeklyPasteMsg && (
-                  <p className={'mt-3 text-xs whitespace-pre-wrap ' + (weeklyPasteMsg.type === 'ok' ? 'text-emerald-800' : 'text-red-700')}>
-                    {weeklyPasteMsg.text}
-                  </p>
-                )}
-              </div>
-            </section>
-
-            <section>
-              <SectionTitle subtitle="자사(카리스) 홍보용 광고 성과 · 콜드 아웃바운드와는 별개">
-                자사 광고 누적 성과 (일별 시드)
+            {/* ─── 오가닉 조회수 입력 ─── */}
+            <Card id="hub-organic" className="p-6 scroll-mt-28 ring-1 ring-neutral-100 shadow-sm">
+              <SectionTitle subtitle="일별 기록 · 같은 날짜는 덮어쓰기 · Enter로 빠르게 저장">
+                오가닉 조회수 (블로그 · 링크드인)
               </SectionTitle>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MetricCard
-                  label="누적 전환"
-                  value={fmtNum(adsAllTime.conv)}
-                  unit="건"
-                  delta={<span className="text-xs text-neutral-500">{fmtNum(adsAllTime.clicks)} 클릭 중</span>}
-                  color="#059669"
-                />
-                <MetricCard
-                  label="누적 광고비"
-                  value={fmtKRWM(adsAllTime.cost)}
-                  delta={<span className="text-xs text-neutral-500">CPA {adsAllTime.conv ? fmtKRW(Math.round(adsAllTime.cost/adsAllTime.conv)) : '—'}</span>}
-                />
-                <MetricCard
-                  label="누적 클릭"
-                  value={fmtNum(adsAllTime.clicks)}
-                  unit="회"
-                  delta={<span className="text-xs text-neutral-500">CTR {fmtPct(adsAllTime.imp ? adsAllTime.clicks/adsAllTime.imp : 0, 2)}</span>}
-                />
-                <MetricCard
-                  label="누적 노출"
-                  value={shortNum(adsAllTime.imp)}
-                  unit="회"
-                  delta={<span className="text-xs text-neutral-500">3개 매체 합산</span>}
-                />
-              </div>
-            </section>
-
-            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <SectionTitle subtitle="막대는 매체별 전환수 (스택) · 점선은 총 광고비 (KRW)">
-                매체별 전환 추이 (최근 90일)
-              </SectionTitle>
-              <div className="h-80">
-                <ResponsiveContainer>
-                  <ComposedChart data={dailyConvRange(90)} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#737373' }} tickFormatter={fmtDate} axisLine={{ stroke: '#e5e5e5' }} tickLine={false} interval={8} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#737373' }} axisLine={false} tickLine={false} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
-                    <Tooltip
-                      contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                      labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
-                      itemStyle={{ color: '#fafafa' }}
-                      formatter={(v, name) => name === '총비용' ? fmtKRW(v) : v + '건'}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
-                    <Bar yAxisId="left" dataKey="Naver"  stackId="c" fill={CHANNEL_COLORS.Naver} />
-                    <Bar yAxisId="left" dataKey="Google" stackId="c" fill={CHANNEL_COLORS.Google} />
-                    <Bar yAxisId="left" dataKey="Meta"   stackId="c" fill={CHANNEL_COLORS.Meta} />
-                    <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#0a0a0a" strokeWidth={1.5} dot={false} strokeDasharray="4 4" name="총비용" />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            <section>
-              <SectionTitle>매체별 성과</SectionTitle>
-              <div className="grid grid-cols-3 gap-4">
-                {channelAll.sort((a,b) => b.conv - a.conv).map(ch => (
-                  <div key={ch.name} className="bg-white rounded-2xl p-6 border border-neutral-200 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: CHANNEL_COLORS[ch.name] }} />
-                    <div className="flex items-baseline justify-between mb-4">
-                      <span className="text-lg font-bold">{ch.name}</span>
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHANNEL_COLORS[ch.name] }} />
-                    </div>
-                    <div className="text-xs text-neutral-500 mb-1">전환</div>
-                    <div className="flex items-baseline gap-1 mb-1">
-                      <span className="text-4xl font-bold tabular-nums" style={{ color: CHANNEL_COLORS[ch.name] }}>{fmtNum(ch.conv)}</span>
-                      <span className="text-sm text-neutral-500">건</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 mb-4">CVR {fmtPct(ch.cvr, 2)}</div>
-                    <div className="h-px bg-neutral-100 mb-4" />
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <div className="text-neutral-500 mb-0.5">광고비</div>
-                        <div className="font-semibold tabular-nums">{fmtKRWM(ch.cost)}</div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500 mb-0.5">CPA</div>
-                        <div className="font-semibold tabular-nums">{ch.cpa ? fmtKRWM(ch.cpa) : '—'}</div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500 mb-0.5">클릭</div>
-                        <div className="font-semibold tabular-nums">{fmtNum(ch.clicks)}</div>
-                      </div>
-                      <div>
-                        <div className="text-neutral-500 mb-0.5">CPC</div>
-                        <div className="font-semibold tabular-nums">{fmtKRWM(ch.cpc)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {/* ═════════ TAB: 오가닉 매체 ═════════ */}
-        {tab === 'organic' && (
-          <div className="space-y-8">
-
-            {/* 요약 카드 */}
-            <section>
-              <SectionTitle subtitle="자연 유입 채널 · 매일 기록하면 주간 리포트에 자동 합산">
-                오가닉 매체 현황
-              </SectionTitle>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MetricCard
-                  label="네이버 블로그 · 이번 주"
-                  value={fmtNum(blogThisWeek)}
-                  unit="회"
-                  delta={<Delta curr={blogThisWeek} prev={blogLastWeek} unit="회" />}
-                  color="#03C75A"
-                />
-                <MetricCard
-                  label="네이버 블로그 · 누적"
-                  value={fmtNum(blogAllTime)}
-                  unit="회"
-                  delta={<span className="text-xs text-neutral-500">기록 {blog.length}일</span>}
-                />
-                <MetricCard
-                  label="링크드인 · 이번 주"
-                  value={fmtNum(linkedinThisWeek)}
-                  unit="회"
-                  delta={<Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" />}
-                  color="#0A66C2"
-                />
-                <MetricCard
-                  label="링크드인 · 누적"
-                  value={fmtNum(linkedinAllTime)}
-                  unit="회"
-                  delta={<span className="text-xs text-neutral-500">기록 {linkedin.length}일</span>}
-                />
-              </div>
-            </section>
-
-            {/* 입력 폼 */}
-            <section className="bg-white rounded-2xl p-6 border border-neutral-200">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-bold">일별 조회수 기록</h2>
-                  <p className="text-sm text-neutral-500 mt-1">
-                    같은 날짜를 다시 입력하면 덮어씁니다
-                  </p>
-                </div>
-              </div>
 
               <div className="flex flex-wrap gap-3 items-end">
-                {/* 매체 토글 */}
                 <div>
-                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">매체</label>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">매체</label>
                   <div className="inline-flex rounded-lg overflow-hidden border border-neutral-200">
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'blog' })}
-                      className={'px-4 py-2 text-sm font-semibold transition-colors ' +
+                      className={'px-4 py-2 text-sm font-semibold ' +
                         (organicInput.source === 'blog' ? 'bg-green-100 text-green-800' : 'text-neutral-500 hover:bg-neutral-50')}
                     >
                       <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 align-middle" />
@@ -1324,7 +1545,7 @@ export default function Dashboard() {
                     </button>
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'linkedin' })}
-                      className={'px-4 py-2 text-sm font-semibold transition-colors border-l border-neutral-200 ' +
+                      className={'px-4 py-2 text-sm font-semibold border-l border-neutral-200 ' +
                         (organicInput.source === 'linkedin' ? 'bg-blue-100 text-blue-800' : 'text-neutral-500 hover:bg-neutral-50')}
                     >
                       <span className="inline-block w-2 h-2 rounded-full bg-blue-600 mr-2 align-middle" />
@@ -1332,21 +1553,17 @@ export default function Dashboard() {
                     </button>
                   </div>
                 </div>
-
-                {/* 날짜 */}
                 <div>
-                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">날짜</label>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">날짜</label>
                   <input
                     type="date"
                     value={organicInput.date}
                     onChange={e => setOrganicInput({ ...organicInput, date: e.target.value })}
-                    className="px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors tabular-nums"
+                    className="px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
                   />
                 </div>
-
-                {/* 조회수 */}
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">조회수</label>
+                <div className="flex-1 min-w-[160px]">
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1">조회수</label>
                   <input
                     type="number"
                     min="0"
@@ -1354,136 +1571,169 @@ export default function Dashboard() {
                     onChange={e => setOrganicInput({ ...organicInput, views: e.target.value })}
                     onKeyDown={e => { if (e.key === 'Enter') addOrganic(); }}
                     placeholder="예) 15"
-                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 transition-colors tabular-nums"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 tabular-nums"
                   />
                 </div>
-
                 <button
                   onClick={addOrganic}
                   disabled={!organicInput.views || isNaN(parseInt(organicInput.views, 10))}
-                  className="px-5 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300 flex items-center gap-1.5"
                 >
                   <Plus size={16} /> 기록
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-neutral-500">
-                Tip — 오늘 날짜가 기본값으로 들어있습니다. 조회수 입력 후 Enter로 빠르게 기록하세요.
-              </div>
-            </section>
-
-            {/* 일별 추이 차트 */}
-            <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <SectionTitle subtitle="최근 30일 · 매체별 스택">일별 조회수 추이</SectionTitle>
-              <div className="h-72">
-                <ResponsiveContainer>
-                  <BarChart data={organicDaily} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#737373' }} tickFormatter={fmtDate} axisLine={{ stroke: '#e5e5e5' }} tickLine={false} interval={2} />
-                    <YAxis tick={{ fontSize: 11, fill: '#737373' }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                      labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
-                      itemStyle={{ color: '#fafafa' }}
-                      formatter={v => v + '회'}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
-                    <Bar dataKey="blog"     stackId="o" fill="#03C75A" name="네이버 블로그" />
-                    <Bar dataKey="linkedin" stackId="o" fill="#0A66C2" name="링크드인" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {organicDaily.every(d => d.blog === 0 && d.linkedin === 0) && (
-                <div className="mt-4 text-center text-sm text-neutral-500">
-                  아직 기록된 조회수가 없습니다. 위 폼에서 입력해보세요.
-                </div>
-              )}
-            </section>
-
-            {/* 기록 리스트 (2단 컬럼) */}
-            <section className="grid grid-cols-2 gap-4">
-              {/* 네이버 블로그 리스트 */}
-              <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-                <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
-                    <h3 className="text-base font-bold">네이버 블로그</h3>
-                  </div>
-                  <span className="text-xs text-neutral-500 tabular-nums">{blog.length}일 기록</span>
-                </div>
-                <div className="max-h-[420px] overflow-y-auto">
-                  {blog.length === 0 ? (
-                    <div className="text-center py-12 text-sm text-neutral-500">기록 없음</div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <tbody className="divide-y divide-neutral-100">
-                        {blog.slice(0, 60).map(b => (
-                          <tr key={b.date} className="hover:bg-neutral-50 group">
-                            <td className="px-5 py-2.5 text-neutral-600 tabular-nums text-xs w-28">{b.date}</td>
-                            <td className="px-5 py-2.5 tabular-nums font-semibold text-neutral-900">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
-                            <td className="px-5 py-2.5 w-10 text-right">
-                              <button
-                                onClick={() => deleteOrganic('blog', b.date)}
-                                className="text-xs text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="삭제"
-                              >
-                                ✕
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-
-              {/* 링크드인 리스트 */}
-              <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-                <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <h3 className="text-base font-bold">링크드인</h3>
-                  </div>
-                  <span className="text-xs text-neutral-500 tabular-nums">{linkedin.length}일 기록</span>
-                </div>
-                <div className="max-h-[420px] overflow-y-auto">
-                  {linkedin.length === 0 ? (
-                    <div className="text-center py-12 text-sm text-neutral-500">
-                      아직 기록 없음 — 위 폼에서<br />
-                      &apos;링크드인&apos; 선택 후 입력해보세요
+              <div className="grid grid-cols-2 gap-4 mt-5">
+                {/* 블로그 */}
+                <div className="border border-neutral-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-sm font-bold">네이버 블로그</span>
                     </div>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <tbody className="divide-y divide-neutral-100">
-                        {linkedin.slice(0, 60).map(b => (
-                          <tr key={b.date} className="hover:bg-neutral-50 group">
-                            <td className="px-5 py-2.5 text-neutral-600 tabular-nums text-xs w-28">{b.date}</td>
-                            <td className="px-5 py-2.5 tabular-nums font-semibold text-neutral-900">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
-                            <td className="px-5 py-2.5 w-10 text-right">
-                              <button
-                                onClick={() => deleteOrganic('linkedin', b.date)}
-                                className="text-xs text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="삭제"
-                              >
-                                ✕
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                    <span className="text-xs text-neutral-500 tabular-nums">{blog.length}일</span>
+                  </div>
+                  <div className="max-h-[260px] overflow-y-auto">
+                    {blog.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-neutral-400">기록 없음</div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-neutral-100">
+                          {blog.slice(0, 40).map(b => (
+                            <tr key={b.date} className="hover:bg-neutral-50 group">
+                              <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
+                              <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
+                              <td className="px-2 py-2 w-8 text-right">
+                                <button onClick={() => deleteOrganic('blog', b.date)} className="text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                  <X size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
+                {/* 링크드인 */}
+                <div className="border border-neutral-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-600" />
+                      <span className="text-sm font-bold">링크드인</span>
+                    </div>
+                    <span className="text-xs text-neutral-500 tabular-nums">{linkedin.length}일</span>
+                  </div>
+                  <div className="max-h-[260px] overflow-y-auto">
+                    {linkedin.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-neutral-400 px-4">
+                        아직 기록 없음 —<br />위 폼에서 &apos;링크드인&apos; 선택 후 입력
+                      </div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-neutral-100">
+                          {linkedin.slice(0, 40).map(b => (
+                            <tr key={b.date} className="hover:bg-neutral-50 group">
+                              <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
+                              <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
+                              <td className="px-2 py-2 w-8 text-right">
+                                <button onClick={() => deleteOrganic('linkedin', b.date)} className="text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                  <X size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
               </div>
-            </section>
+            </Card>
           </div>
         )}
 
-        <footer className="mt-10 pt-6 border-t border-neutral-200 flex items-center justify-between text-xs text-neutral-500">
+        {leadEdit && (
+          <div
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/45 backdrop-blur-[2px]"
+            role="presentation"
+            onClick={() => setLeadEdit(null)}
+          >
+            <div
+              className="w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-neutral-200 p-6 sm:p-7 max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="lead-edit-title"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 id="lead-edit-title" className="text-lg font-bold text-neutral-900">리드 정보 편집</h3>
+              <p className="text-sm text-neutral-500 mt-1 mb-5">{leadEdit.brand}</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">우선순위 (시트 등급)</label>
+                  <select
+                    value={leadEdit.priority}
+                    onChange={e => setLeadEdit({ ...leadEdit, priority: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900 bg-white"
+                  >
+                    {['', 'A', 'B', 'C', 'D', 'NEW'].map(p => (
+                      <option key={p || 'none'} value={p}>{p === '' ? '(미지정)' : p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">타겟 국가 (쉼표로 구분)</label>
+                  <input
+                    value={leadEdit.countries}
+                    onChange={e => setLeadEdit({ ...leadEdit, countries: e.target.value })}
+                    placeholder="Vietnam, Thailand"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">플랫폼</label>
+                  <input
+                    value={leadEdit.platform}
+                    onChange={e => setLeadEdit({ ...leadEdit, platform: e.target.value })}
+                    placeholder="Shopee / Lazada"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-600 mb-1.5">이메일</label>
+                  <input
+                    value={leadEdit.email}
+                    onChange={e => setLeadEdit({ ...leadEdit, email: e.target.value })}
+                    placeholder="contact@brand.com"
+                    className="w-full px-3 py-2 rounded-lg border border-neutral-300 text-sm outline-none focus:border-neutral-900"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLeadEdit(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100 border border-neutral-200"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={saveLeadEdit}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <footer className="mt-10 pt-6 border-t border-neutral-200 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs text-neutral-500">
           <span>K-Beauty SEA Outbound · Weekly Report</span>
-          <span>
-            리스트 {leads.length}곳 · 발송 {funnelCumulative.sent} · 미팅 {funnelCumulative.meeting} · 성사 {funnelCumulative.won}
+          <span className="tabular-nums">
+            NSM · 이번 주 총 전환 {thisWeekAd ? thisWeekAd.totalConversions : '—'}건 · 리드 {leads.length}곳 · 미팅 {funnelCumulative.meeting}
           </span>
         </footer>
       </main>
