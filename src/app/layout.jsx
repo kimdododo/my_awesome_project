@@ -1,8 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'K-Beauty SEA · Weekly Report',
-  description: 'Caris outbound intelligence desk',
+  title: '주간 대시보드',
 };
 
 export default function RootLayout({ children }) {

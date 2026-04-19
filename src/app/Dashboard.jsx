@@ -7,8 +7,8 @@ import {
 } from 'recharts';
 import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
-  Cloud, CloudOff, Loader2, Target, Wallet, Users, Trash2, Check, X, Info,
-  LayoutDashboard, ClipboardPenLine, Pencil,
+  Cloud, CloudOff, Loader2, Users, Trash2, X,
+  LayoutDashboard, ClipboardPenLine, Pencil, ChevronRight,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
 import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
@@ -74,6 +74,14 @@ const STAGES = [
 ];
 const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
 
+/** 막대 차트에서 가장 최신 구간만 강조 */
+const CHART_BAR_LATEST = '#1d4ed8';
+const CHART_BAR_MUTED = '#cbd5e1';
+const CHART_BAR_MUTED_LI = '#94a3b8';
+
+/** 신뢰감 있는 네이비 + 클린 화이트 UI */
+const NAVY = '#0c1e3c';
+
 /* ============================================================
    UTILITIES
    ============================================================ */
@@ -134,25 +142,23 @@ function Delta({ curr, prev, invert = false, unit = '', small = false }) {
 
 function Card({ children, className = '', ...rest }) {
   return (
-    <div className={'bg-white rounded-2xl border border-neutral-200 ' + className} {...rest}>
+    <div className={'bg-white rounded-2xl border border-slate-200 shadow-sm shadow-slate-900/[0.03] ' + className} {...rest}>
       {children}
     </div>
   );
 }
 
-function MiniStat({ label, value, unit, delta, sub, accent, icon: Icon }) {
+/** 이번 주 핵심 KPI — 상단 Summary */
+function SummaryKpi({ label, value, unit, hint, children }) {
   return (
-    <div className="p-5">
-      <div className="flex items-center gap-2 mb-2">
-        {Icon && <Icon size={14} className="text-neutral-400" />}
-        <div className="text-xs text-neutral-500 font-semibold uppercase tracking-wider">{label}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm ring-1 ring-slate-900/[0.04]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className="mt-3 flex flex-wrap items-baseline gap-1.5">
+        <span className="text-3xl font-bold tabular-nums tracking-tight md:text-[2.25rem]" style={{ color: NAVY }}>{value}</span>
+        {unit && <span className="text-lg font-medium text-slate-400">{unit}</span>}
       </div>
-      <div className="flex items-baseline gap-1" style={{ color: accent || '#0a0a0a' }}>
-        <span className="text-4xl font-bold tabular-nums" style={{ letterSpacing: '-0.02em' }}>{value}</span>
-        {unit && <span className="text-base text-neutral-400 ml-0.5">{unit}</span>}
-      </div>
-      {delta && <div className="mt-2">{delta}</div>}
-      {sub && <div className="mt-1 text-xs text-neutral-500">{sub}</div>}
+      {hint ? <p className="mt-2 text-sm leading-snug text-slate-500">{hint}</p> : null}
+      {children ? <div className="mt-2">{children}</div> : null}
     </div>
   );
 }
@@ -161,10 +167,38 @@ function SectionTitle({ children, subtitle, right }) {
   return (
     <div className="mb-5 flex items-end justify-between gap-4">
       <div>
-        <h2 className="text-xl font-bold text-neutral-900" style={{ letterSpacing: '-0.01em' }}>{children}</h2>
-        {subtitle && <p className="text-sm text-neutral-500 mt-1">{subtitle}</p>}
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">{children}</h2>
+        {subtitle && <p className="mt-1.5 text-[15px] leading-relaxed text-slate-500">{subtitle}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
+    </div>
+  );
+}
+
+/** 가로 스테퍼 + 단계 간 전환율 */
+function PipelineStepper({ steps, rates }) {
+  return (
+    <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-w-[720px] items-stretch md:min-w-0">
+        {steps.map((step, i) => (
+          <React.Fragment key={step.key}>
+            <div className="min-w-[88px] flex-1 rounded-xl border border-slate-200 bg-white px-2 py-4 text-center shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{step.short}</div>
+              <div className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-slate-900 md:text-2xl">{fmtNum(step.count)}</div>
+              <div className="mt-0.5 text-[10px] text-slate-400">곳</div>
+            </div>
+            {i < steps.length - 1 && (
+              <div className="flex w-[4.5rem] shrink-0 flex-col items-center justify-center gap-0.5 px-0.5 sm:w-24">
+                <ChevronRight className="hidden text-slate-300 sm:block" size={18} strokeWidth={2} aria-hidden />
+                <div className="rounded-md bg-blue-50 px-2 py-1 text-center text-[11px] font-bold tabular-nums text-blue-950 ring-1 ring-blue-100/80">
+                  {fmtPct(rates[i], 1)}
+                </div>
+                <span className="text-[9px] font-medium uppercase tracking-wide text-slate-400">전환율</span>
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
     </div>
   );
 }
@@ -357,6 +391,14 @@ export default function Dashboard() {
     return c;
   }, [leads, brandStages]);
 
+  /** 누적: 미팅·성사 단계 리드 중 성사 비중 */
+  const meetingWinRate = useMemo(() => {
+    const m = funnelCumulative.meeting;
+    const w = funnelCumulative.won;
+    const d = m + w;
+    return d > 0 ? w / d : 0;
+  }, [funnelCumulative]);
+
   const weeklyStageChange = useMemo(() => {
     const thisWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
     const lastWeek = { sent: 0, replied: 0, meeting: 0, won: 0 };
@@ -375,13 +417,27 @@ export default function Dashboard() {
   const linkedinThisWeek = useMemo(() => linkedin.filter(b => b.date >= thisWeekStart && b.date <= todayStr).reduce((s, b) => s + b.views, 0), [linkedin, thisWeekStart, todayStr]);
   const linkedinLastWeek = useMemo(() => linkedin.filter(b => b.date >= lastWeekStart && b.date <= lastWeekEnd).reduce((s, b) => s + b.views, 0), [linkedin, lastWeekStart, lastWeekEnd]);
 
-  const funnelChartData = useMemo(() => ([
-    { key: 'total', label: '전체', count: leads.length },
-    { key: 'sent', label: '발송', count: funnelCumulative.sent },
-    { key: 'replied', label: '회신', count: funnelCumulative.replied },
-    { key: 'meeting', label: '미팅', count: funnelCumulative.meeting },
-    { key: 'won', label: '성사', count: funnelCumulative.won },
-  ]), [leads.length, funnelCumulative]);
+  const pipelineStepsModel = useMemo(() => {
+    const T = leads.length;
+    const S = funnelCumulative.sent;
+    const R = funnelCumulative.replied;
+    const M = funnelCumulative.meeting;
+    const W = funnelCumulative.won;
+    const steps = [
+      { key: 'total', label: '전체 리드', short: '전체', count: T },
+      { key: 'sent', label: '발송', short: '발송', count: S },
+      { key: 'replied', label: '회신', short: '회신', count: R },
+      { key: 'meeting', label: '미팅', short: '미팅', count: M },
+      { key: 'won', label: '성사', short: '성사', count: W },
+    ];
+    const rates = [];
+    for (let j = 0; j < steps.length - 1; j++) {
+      const from = steps[j].count;
+      const to = steps[j + 1].count;
+      rates.push(from > 0 ? to / from : 0);
+    }
+    return { steps, rates };
+  }, [leads.length, funnelCumulative]);
 
   const organicDailySeries = useMemo(() => {
     const bMap = new Map(blog.map(x => [x.date, x.views]));
@@ -428,6 +484,26 @@ export default function Dashboard() {
     }
     return t;
   }, [dailyAdRows, dailyAdsAnchor, thisWeekStart, todayStr]);
+
+  const dailyMediaCompare = useMemo(() => {
+    const base = [
+      { ch: 'N', label: '네이버', ...dailyThisWeekTotals.N },
+      { ch: 'G', label: '구글', ...dailyThisWeekTotals.G },
+      { ch: 'M', label: '메타', ...dailyThisWeekTotals.M },
+    ];
+    const totalCo = base.reduce((s, r) => s + r.co, 0);
+    const totalImp = base.reduce((s, r) => s + r.imp, 0);
+    const totalClk = base.reduce((s, r) => s + r.clk, 0);
+    const totalCv = base.reduce((s, r) => s + r.cv, 0);
+    const rows = base.map(r => ({
+      ...r,
+      coShare: totalCo > 0 ? r.co / totalCo : 0,
+      impShare: totalImp > 0 ? r.imp / totalImp : 0,
+      clkShare: totalClk > 0 ? r.clk / totalClk : 0,
+      cvShare: totalCv > 0 ? r.cv / totalCv : 0,
+    }));
+    return { rows, totalCo, totalImp, totalClk, totalCv };
+  }, [dailyThisWeekTotals]);
 
   /* ────────────────────────────────────────────
      HANDLERS
@@ -617,49 +693,40 @@ export default function Dashboard() {
     if (ch.won > 0) return `이번 주 성사 ${ch.won}건 — 결실!`;
     if (ch.meeting > 0) return `이번 주 미팅 ${ch.meeting}건 잡힘`;
     if (ch.sent > 0) return `이번 주 콜드메일 ${ch.sent}곳 발송`;
-    return '이번 주 데이터를 입력해주세요';
+    return '이번 주 표시할 데이터가 없습니다';
   }, [thisWeekAd, lastWeekAd, weeklyStageChange]);
 
   /* ────────────────────────────────────────────
      RENDER
      ──────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-white text-neutral-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
+    <div className="min-h-screen bg-slate-50 text-slate-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
         .tabular-nums { font-variant-numeric: tabular-nums; }
       `}</style>
 
       {/* HEADER */}
-      <header className="bg-white border-b border-neutral-200 shadow-sm">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.12em] mb-1">CARIS · 주간 대시보드</div>
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900">K-Beauty SEA Outbound</h1>
-            <p className="text-xs text-neutral-500 mt-1.5 max-w-md leading-relaxed">
-              엑셀 시트를 나눠 쓰지 말고, 이 앱 한 곳에 주간 광고·오가닉·콜드 리스트를 입력하세요. 저장되면 팀 전체가 같은 데이터를 봅니다.
-            </p>
+      <header className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+          <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-white border border-neutral-200">
+            {syncStatus === 'loading' && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중</span></>)}
+            {syncStatus === 'saving'  && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중</span></>)}
+            {syncStatus === 'saved'   && (<><Cloud size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장됨</span></>)}
+            {syncStatus === 'error'   && (<><CloudOff size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장 실패</span></>)}
           </div>
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4 sm:justify-end">
-            <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-white border border-neutral-200">
-              {syncStatus === 'loading' && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중</span></>)}
-              {syncStatus === 'saving'  && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중</span></>)}
-              {syncStatus === 'saved'   && (<><Cloud size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장됨</span></>)}
-              {syncStatus === 'error'   && (<><CloudOff size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장 실패</span></>)}
-            </div>
-            <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-neutral-900 font-medium px-2 py-1.5 rounded-lg hover:bg-neutral-50/80 border border-transparent hover:border-neutral-200" title="모든 입력 초기화">
-              초기화
-            </button>
-            <div className="text-left sm:text-right border border-neutral-200 rounded-xl px-4 py-2 bg-white">
-              <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider mb-0.5">오늘</div>
-              <div className="text-sm font-semibold tabular-nums text-neutral-900">{fmtKoreanDate(todayStr)}</div>
-            </div>
+          <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-neutral-900 font-medium px-2 py-1.5 rounded-lg hover:bg-neutral-50/80 border border-transparent hover:border-neutral-200" title="모든 입력 초기화">
+            초기화
+          </button>
+          <div className="text-left sm:text-right border border-neutral-200 rounded-xl px-4 py-2 bg-white">
+            <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider mb-0.5">오늘</div>
+            <div className="text-sm font-semibold tabular-nums text-neutral-900">{fmtKoreanDate(todayStr)}</div>
           </div>
         </div>
       </header>
 
       {/* TAB BAR */}
-      <div className="bg-white backdrop-blur border-b border-neutral-200 sticky top-0 z-20 shadow-sm">
+      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-8 flex gap-1 sm:gap-2 overflow-x-auto pb-px">
           {[
             { id: 'week',  label: '이번 주',     sub: '한눈에 보기', Icon: LayoutDashboard },
@@ -673,15 +740,15 @@ export default function Dashboard() {
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
-                className={'flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left border-b-2 transition-colors shrink-0 rounded-t-lg ' +
-                  (active ? 'border-neutral-900 bg-white text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50/80')}
+                className={'flex shrink-0 items-center gap-2.5 rounded-t-lg border-b-2 px-4 py-3.5 text-left transition-colors sm:px-5 ' +
+                  (active ? 'border-blue-900 bg-white text-blue-950' : 'border-transparent text-slate-500 hover:bg-slate-50/80 hover:text-slate-800')}
               >
-                <span className={'p-1.5 rounded-lg border ' + (active ? 'bg-white border-neutral-300 text-neutral-800' : 'bg-white border-transparent text-neutral-500')}>
+                <span className={'rounded-lg border p-1.5 ' + (active ? 'border-slate-200 bg-slate-50 text-blue-950' : 'border-transparent bg-white text-slate-500')}>
                   <Icon size={16} strokeWidth={2.2} />
                 </span>
                 <span>
                   <span className="block text-sm font-bold">{t.label}</span>
-                  <span className="block text-[10px] font-medium mt-0.5 opacity-70">{t.sub}</span>
+                  <span className="mt-0.5 block text-[11px] font-medium opacity-75">{t.sub}</span>
                 </span>
               </button>
             );
@@ -689,263 +756,123 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <main className="max-w-[1200px] mx-auto px-8 py-8">
+      <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-8">
 
         {/* ═══════════════════════════════════ TAB: 이번 주 ═══════════════════════════════════ */}
         {tab === 'week' && (
           <div className="space-y-6">
 
-            {/* HERO — 이번 주 가장 중요한 숫자 */}
-            <Card className="overflow-hidden border-neutral-200 shadow-sm">
-              <div className="p-8 bg-white">
-                <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500">
-                  <Target size={14} className="text-neutral-400" />
-                  이번 주 광고로 들어온 문의·전환 (건수)
-                </div>
-                {thisWeekAd ? (
-                  <>
-                    <div className="flex items-baseline gap-3 mb-3">
-                      <span className="tabular-nums font-bold text-neutral-900" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>
-                        {fmtNum(thisWeekAd.totalConversions)}
-                      </span>
-                      <span className="text-3xl text-neutral-400 font-medium">건</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-600">
-                      {lastWeekAd ? (
-                        (() => {
-                          const diff = thisWeekAd.totalConversions - lastWeekAd.totalConversions;
-                          const up = diff > 0;
-                          const flat = diff === 0;
-                          const color = flat ? 'text-neutral-500' : up ? 'text-neutral-800' : 'text-neutral-500';
-                          const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
-                          return (
-                            <span className={'inline-flex items-center gap-1 font-semibold ' + color}>
-                              <Icon size={16} strokeWidth={2.5} />
-                              {flat ? '전주와 동일' : (up ? '+' : '') + diff + '건 vs 전주 ' + lastWeekAd.totalConversions + '건'}
-                            </span>
-                          );
-                        })()
-                      ) : (
-                        <span className="text-neutral-500">전주 데이터 없음</span>
-                      )}
-                      <span className="text-neutral-300">|</span>
-                      <span className="text-neutral-600">{thisWeekAd.weekLabel || thisWeekStart}</span>
-                    </div>
-                    <div className="mt-6 pt-6 border-t border-neutral-200 grid grid-cols-3 gap-6">
-                      <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                          카리스 애드
-                        </div>
-                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convCarisAds}</div>
-                        <div className="text-xs text-neutral-500 mt-1">
-                          {thisWeekAd.totalConversions ? ((thisWeekAd.convCarisAds / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                          유선
-                        </div>
-                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convPhone}</div>
-                        <div className="text-xs text-neutral-500 mt-1">
-                          {thisWeekAd.totalConversions ? ((thisWeekAd.convPhone / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                          채널톡
-                        </div>
-                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convChannelTalk}</div>
-                        <div className="text-xs text-neutral-500 mt-1">
-                          {thisWeekAd.totalConversions ? ((thisWeekAd.convChannelTalk / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-baseline gap-3 mb-3">
-                      <span className="tabular-nums font-bold text-neutral-300" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>—</span>
-                    </div>
-                    <p className="text-neutral-500 mb-5">이번 주 ({thisWeekStart} 월요일 기준) 숫자가 아직 없습니다. 아래 버튼에서 입력할 수 있습니다.</p>
-                    <button
-                      type="button"
-                      onClick={() => setTab('input')}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 font-semibold rounded-lg text-sm transition-colors shadow-sm"
-                    >
-                      <Plus size={16} /> 이번 주 숫자 입력하기
-                    </button>
-                  </>
-                )}
-              </div>
+            {/* ① 핵심 KPI (Summary) */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <SummaryKpi
+                label="총 지출 (이번 주)"
+                value={fmtKRWM(thisWeekAd?.cost ?? 0)}
+                hint={thisWeekAd?.cpa ? `CPA ${fmtKRW(thisWeekAd.cpa)}` : 'CPA —'}
+              />
+              <SummaryKpi
+                label="총 전환 (이번 주)"
+                value={fmtNum(thisWeekAd?.totalConversions ?? 0)}
+                unit="건"
+                hint={lastWeekAd ? `전주 ${fmtNum(lastWeekAd.totalConversions)}건` : '전주 —'}
+              >
+                {thisWeekAd && lastWeekAd ? (
+                  <Delta curr={thisWeekAd.totalConversions} prev={lastWeekAd.totalConversions} unit="건" small />
+                ) : null}
+              </SummaryKpi>
+              <SummaryKpi
+                label="미팅 성사율 (누적)"
+                value={fmtPct(meetingWinRate, 1)}
+                hint={`미팅 단계 ${fmtNum(funnelCumulative.meeting)}곳 · 성사 ${fmtNum(funnelCumulative.won)}곳`}
+              />
+            </div>
 
-              {/* 8-week trend inside hero card */}
-              {last8.length > 0 && (
-                <div className="p-6 border-t border-neutral-200">
-                  <div className="flex items-baseline justify-between mb-3">
-                    <div>
-                      <h3 className="text-sm font-bold text-neutral-900">최근 8주 총 전환 추이</h3>
-                      <p className="text-xs text-neutral-500 mt-0.5">막대 = 총 전환수 · 점선 = CPA</p>
-                    </div>
-                  </div>
-                  <div className="h-44">
-                    <ResponsiveContainer>
-                      <ComposedChart data={last8} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
-                        <XAxis
-                          dataKey="weekLabel"
-                          tick={{ fontSize: 10, fill: '#737373' }}
-                          axisLine={{ stroke: '#e5e5e5' }}
-                          tickLine={false}
-                          interval={0}
-                          tickFormatter={(v) => v ? v.replace(/^\d{4}\./, '').replace('월', '/').replace('주차', '주') : ''}
-                        />
-                        <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
-                        <Tooltip
-                          contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                          labelStyle={{ color: '#171717', marginBottom: 4, fontWeight: 600 }}
-                          itemStyle={{ color: '#404040' }}
-                          formatter={(v, name) => name === 'CPA' ? fmtKRW(v) : v + '건'}
-                        />
-                        <Bar yAxisId="left" dataKey="totalConversions" name="총 전환" radius={[4, 4, 0, 0]}>
-                          {last8.map((row) => (
-                            <Cell key={row.weekStart} fill={row.weekStart === thisWeekStart ? '#404040' : '#d4d4d4'} />
-                          ))}
-                        </Bar>
-                        <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#737373" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
+            {/* ② 전환 추이 */}
+            <Card className="overflow-hidden p-6 md:p-8">
+              <div className="mb-5">
+                <h3 className="text-lg font-bold text-slate-900">최근 8주 총 전환</h3>
+                <p className="mt-1 text-sm text-slate-500">막대 = 총 전환 · 점선 = CPA</p>
+              </div>
+              {last8.length > 0 ? (
+                <div className="h-52 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={last8} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                      <CartesianGrid stroke="#f1f5f9" strokeWidth={1} vertical={false} />
+                      <XAxis
+                        dataKey="weekLabel"
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={0}
+                        tickFormatter={(v) => v ? v.replace(/^\d{4}\./, '').replace('월', '/').replace('주차', '주') : ''}
+                      />
+                      <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={36} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} tickFormatter={shortNum} />
+                      <Tooltip
+                        contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, padding: '6px 10px', boxShadow: '0 4px 12px rgb(15 23 42 / 0.06)' }}
+                        labelStyle={{ color: NAVY, marginBottom: 2, fontWeight: 600, fontSize: 12 }}
+                        itemStyle={{ color: '#475569', fontSize: 12 }}
+                        formatter={(v, name) => name === 'CPA' ? fmtKRW(v) : v + '건'}
+                      />
+                      <Bar yAxisId="left" dataKey="totalConversions" name="총 전환" radius={[3, 3, 0, 0]} maxBarSize={40}>
+                        {last8.map((row, idx) => (
+                          <Cell key={row.weekStart} fill={idx === last8.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED} />
+                        ))}
+                      </Bar>
+                      <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#64748b" strokeWidth={1.25} dot={false} strokeDasharray="3 4" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex min-h-[13rem] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
+                  <p className="tabular-nums text-3xl font-semibold text-slate-700">0</p>
+                  <p className="mt-2 text-sm text-slate-500">저장된 주간 데이터가 없습니다</p>
                 </div>
               )}
             </Card>
 
-            {/* SECONDARY METRICS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <MiniStat
-                  label="광고비"
-                  value={thisWeekAd ? fmtKRWM(thisWeekAd.cost) : '—'}
-                  delta={thisWeekAd && lastWeekAd ? <Delta curr={thisWeekAd.cost} prev={lastWeekAd.cost} invert /> : null}
-                  sub={thisWeekAd ? 'CPA ' + (thisWeekAd.cpa ? fmtKRW(thisWeekAd.cpa) : '—') : '입력 필요'}
-                  icon={Wallet}
-                />
-              </Card>
-              <Card>
-                <MiniStat
-                  label="콜드 발송 (이번 주)"
-                  value={fmtNum(weeklyStageChange.thisWeek.sent)}
-                  unit="곳"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.sent} prev={weeklyStageChange.lastWeek.sent} unit="곳" small />}
-                  sub={`누적 ${funnelCumulative.sent} / ${leads.length} (${fmtPct(funnelCumulative.sent / (leads.length || 1))})`}
-                  accent="#171717"
-                  icon={Users}
-                />
-              </Card>
-              <Card>
-                <MiniStat
-                  label="미팅 성사 (이번 주)"
-                  value={fmtNum(weeklyStageChange.thisWeek.meeting + weeklyStageChange.thisWeek.won)}
-                  unit="건"
-                  delta={<Delta curr={weeklyStageChange.thisWeek.meeting + weeklyStageChange.thisWeek.won} prev={weeklyStageChange.lastWeek.meeting + weeklyStageChange.lastWeek.won} unit="건" small />}
-                  sub={`누적 미팅 ${funnelCumulative.meeting} · 성사 ${funnelCumulative.won}`}
-                  accent="#171717"
-                  icon={Check}
-                />
-              </Card>
-            </div>
-
-            {/* HEADLINE (간단 요약) */}
-            <Card className="p-5 bg-white border-neutral-200">
-              <div className="flex items-start gap-3">
-                <div className="w-1 h-12 bg-neutral-300 rounded-full shrink-0 mt-1" />
-                <div>
-                  <div className="text-xs text-neutral-500 font-semibold uppercase tracking-[0.15em] mb-1">이번 주 한 줄 요약</div>
-                  <h2 className="text-lg font-bold leading-snug text-neutral-900">{headline}</h2>
+            {/* ③ 이번 주 콜드 활동 (조회용 한 줄) */}
+            <Card className="p-5 md:p-6">
+              <div className="flex flex-col gap-3 text-[15px] text-slate-600 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-semibold text-slate-800">콜드 발송 (이번 주)</span>
+                  <span className="tabular-nums text-lg font-bold text-slate-900">{fmtNum(weeklyStageChange.thisWeek.sent)}곳</span>
+                  <span className="text-sm text-slate-500 sm:ml-2">
+                    <Delta curr={weeklyStageChange.thisWeek.sent} prev={weeklyStageChange.lastWeek.sent} unit="곳" small />
+                  </span>
+                </div>
+                <div className="text-sm text-slate-500">
+                  누적 발송 <span className="font-semibold tabular-nums text-slate-800">{fmtNum(funnelCumulative.sent)}</span>
+                  <span className="text-slate-400"> / {fmtNum(leads.length)}</span>
+                  <span className="ml-2 tabular-nums">({fmtPct(funnelCumulative.sent / (leads.length || 1))})</span>
                 </div>
               </div>
             </Card>
 
-            {/* 파이프라인 현황 */}
-            <Card className="p-6">
-              <SectionTitle
-                subtitle="리스트에서 가장 진행된 단계 기준 누적"
-                right={<button onClick={() => setTab('leads')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">전체 리스트 →</button>}
-              >
+            {/* HEADLINE (간단 요약) */}
+            <Card className="border-slate-200 bg-white p-5 md:p-6">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 h-12 w-1 shrink-0 rounded-full bg-blue-900/25" />
+                <div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">이번 주 한 줄 요약</div>
+                  <p className="text-lg font-semibold leading-snug text-slate-900 md:text-xl">{headline}</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* 파이프라인 — 가로 스테퍼 + 단계 간 전환율 */}
+            <Card className="p-6 md:p-7">
+              <SectionTitle subtitle="전체 리드 → 발송 → 회신 → 미팅 → 성사 · 각 단계 이상 누적 · 화살표 사이는 이전 단계 대비 전환율">
                 콜드 파이프라인
               </SectionTitle>
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { label: '전체 리드', count: leads.length, color: '#171717' },
-                  { label: '발송',     count: funnelCumulative.sent,     color: '#404040' },
-                  { label: '회신',     count: funnelCumulative.replied,  color: '#404040' },
-                  { label: '미팅',     count: funnelCumulative.meeting,  color: '#404040' },
-                  { label: '성사',     count: funnelCumulative.won,      color: '#171717' },
-                ].map((s, i, arr) => {
-                  const prev = i === 0 ? null : arr[i - 1];
-                  const rate = prev && prev.count > 0 ? (s.count / prev.count) : null;
-                  return (
-                    <div key={s.label} className="p-3 rounded-lg bg-white border border-neutral-200">
-                      <div className="text-xs text-neutral-500 font-semibold mb-1.5">{s.label}</div>
-                      <div className="font-bold tabular-nums" style={{ fontSize: 28, lineHeight: 1, color: s.color }}>{fmtNum(s.count)}</div>
-                      {rate != null && <div className="text-[11px] text-neutral-500 mt-1">→ {fmtPct(rate)}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4">
-                <div className="h-2 bg-white border border-neutral-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-neutral-400 rounded-full transition-all duration-700" style={{ width: ((funnelCumulative.sent / (leads.length || 1)) * 100) + '%' }} />
-                </div>
-                <div className="mt-1.5 text-xs text-neutral-500">
-                  <span className="font-semibold text-neutral-900">{funnelCumulative.sent}</span>
-                  <span className="text-neutral-400"> / {leads.length}</span>
-                  <span className="ml-2">발송 진척 {fmtPct(funnelCumulative.sent / (leads.length || 1))}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-6 border-t border-neutral-200">
-                <div className="mb-3">
-                  <h3 className="text-sm font-bold text-neutral-900">단계별 누적 (막대)</h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">각 단계 이상으로 진행된 리드 수 · 위 숫자 카드와 동일한 기준입니다.</p>
-                </div>
-                <div className="h-44 w-full min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={funnelChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
-                      <XAxis
-                        dataKey="label"
-                        tick={{ fontSize: 10, fill: '#737373' }}
-                        axisLine={{ stroke: '#e5e5e5' }}
-                        tickLine={false}
-                        interval={0}
-                      />
-                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                        labelStyle={{ color: '#171717', marginBottom: 4, fontWeight: 600 }}
-                        formatter={(v) => [`${fmtNum(v)}곳`, '누적']}
-                      />
-                      <Bar dataKey="count" name="리드" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                        {funnelChartData.map((row, i) => (
-                          <Cell key={row.key} fill={i === 0 ? '#737373' : '#d4d4d4'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+              <PipelineStepper steps={pipelineStepsModel.steps} rates={pipelineStepsModel.rates} />
+              <p className="mt-4 text-xs leading-relaxed text-slate-500">
+                전환율 = 다음 단계 인원 ÷ 이전 단계 인원. 리스트에서 가장 앞선 단계만 반영합니다.
+              </p>
             </Card>
 
             {/* 오가닉 요약 */}
             <Card className="p-6">
-              <SectionTitle
-                subtitle="자연 유입 · 매일 기록하면 여기에 반영"
-                right={<button onClick={() => setTab('input')} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">기록하기 →</button>}
-              >
+              <SectionTitle subtitle="이번 주 합계 · 일별 추이는 최근 14일">
                 오가닉 유입 (이번 주)
               </SectionTitle>
               <div className="grid grid-cols-2 gap-4">
@@ -974,18 +901,18 @@ export default function Dashboard() {
                 </div>
                 <div className="h-52 w-full min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={organicDailySeries} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
+                    <BarChart data={organicDailySeries} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+                      <CartesianGrid stroke="#f1f5f9" strokeWidth={1} vertical={false} />
                       <XAxis
                         dataKey="label"
-                        tick={{ fontSize: 9, fill: '#737373' }}
-                        axisLine={{ stroke: '#e5e5e5' }}
+                        tick={{ fontSize: 10, fill: '#64748b' }}
+                        axisLine={false}
                         tickLine={false}
                         interval={1}
                       />
-                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
                       <Tooltip
-                        contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                        contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, padding: '6px 10px', boxShadow: '0 4px 12px rgb(15 23 42 / 0.06)' }}
                         labelFormatter={(_, p) => {
                           const d = p?.[0]?.payload?.d;
                           return d ? fmtKoreanDate(d) : '';
@@ -993,39 +920,128 @@ export default function Dashboard() {
                         formatter={(v, name) => [fmtNum(v) + '회', name]}
                       />
                       <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                      <Bar dataKey="blog" name="네이버 블로그" fill="#d4d4d4" radius={[2, 2, 0, 0]} maxBarSize={14} />
-                      <Bar dataKey="linkedin" name="링크드인" fill="#a3a3a3" radius={[2, 2, 0, 0]} maxBarSize={14} />
+                      <Bar dataKey="blog" name="네이버 블로그" radius={[2, 2, 0, 0]} maxBarSize={14}>
+                        {organicDailySeries.map((row, idx) => (
+                          <Cell
+                            key={row.d + '-blog'}
+                            fill={idx === organicDailySeries.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED}
+                          />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="linkedin" name="링크드인" radius={[2, 2, 0, 0]} maxBarSize={14}>
+                        {organicDailySeries.map((row, idx) => (
+                          <Cell
+                            key={row.d + '-li'}
+                            fill={idx === organicDailySeries.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED_LI}
+                          />
+                        ))}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 shadow-sm">
-              <SectionTitle
-                subtitle="일별 N/G/M 시트를 앱에 옮긴 합계(이번 주 월~오늘) · 앵커 날짜는 입력 탭에서 수정"
-                right={<button type="button" onClick={() => { setTab('input'); setTimeout(() => document.getElementById('hub-daily')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">일별 시트 →</button>}
-              >
+            <Card className="p-6 shadow-sm md:p-7">
+              <SectionTitle subtitle="이번 주 월~오늘 합계 · 표에서 수치 비교, 막대에서 비용·노출 비중 확인">
                 일별 매체 (이번 주)
               </SectionTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { ch: 'N', label: '네이버' },
-                  { ch: 'G', label: '구글' },
-                  { ch: 'M', label: '메타' },
-                ].map(({ ch, label }) => {
-                  const x = dailyThisWeekTotals[ch];
-                  return (
-                    <div key={ch} className="rounded-xl border border-neutral-200 bg-white p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-neutral-600">{label}</span>
-                      </div>
-                      <div className="text-lg font-bold tabular-nums text-neutral-900">{fmtKRWM(x.co)}</div>
-                      <div className="text-[11px] text-neutral-500 mt-1">노출 {fmtNum(x.imp)} · 클릭 {fmtNum(x.clk)} · 전환 {fmtNum(x.cv)}</div>
-                    </div>
-                  );
-                })}
+
+              <div className="mb-6 grid gap-5 sm:grid-cols-2">
+                <div>
+                  <div className="mb-2 flex items-end justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">광고비 비중</span>
+                    <span className="text-xs tabular-nums text-slate-500">합계 {fmtKRWM(dailyMediaCompare.totalCo)}</span>
+                  </div>
+                  <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70">
+                    {dailyMediaCompare.rows.map((r, i) => (
+                      <div
+                        key={r.ch + '-co'}
+                        style={{
+                          width: dailyMediaCompare.totalCo > 0 ? `${(r.co / dailyMediaCompare.totalCo) * 100}%` : `${100 / 3}%`,
+                        }}
+                        className={i === 0 ? 'bg-[#0c1e3c]' : i === 1 ? 'bg-[#1d4ed8]' : 'bg-[#60a5fa]'}
+                        title={`${r.label} ${fmtKRWM(r.co)} (${fmtPct(r.coShare, 1)})`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    {dailyMediaCompare.rows.map((r, i) => (
+                      <span key={r.ch + '-co-lg'} className="inline-flex items-center gap-1.5">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${i === 0 ? 'bg-[#0c1e3c]' : i === 1 ? 'bg-[#1d4ed8]' : 'bg-[#60a5fa]'}`} />
+                        {r.label}
+                        <span className="tabular-nums font-semibold text-slate-800">{fmtPct(r.coShare, 1)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-2 flex items-end justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">노출 비중</span>
+                    <span className="text-xs tabular-nums text-slate-500">합계 {fmtNum(dailyMediaCompare.totalImp)}</span>
+                  </div>
+                  <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70">
+                    {dailyMediaCompare.rows.map((r, i) => (
+                      <div
+                        key={r.ch + '-imp'}
+                        style={{
+                          width: dailyMediaCompare.totalImp > 0 ? `${(r.imp / dailyMediaCompare.totalImp) * 100}%` : `${100 / 3}%`,
+                        }}
+                        className={i === 0 ? 'bg-slate-600' : i === 1 ? 'bg-slate-400' : 'bg-slate-300'}
+                        title={`${r.label} ${fmtNum(r.imp)} (${fmtPct(r.impShare, 1)})`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    {dailyMediaCompare.rows.map((r, i) => (
+                      <span key={r.ch + '-imp-lg'} className="inline-flex items-center gap-1.5">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${i === 0 ? 'bg-slate-600' : i === 1 ? 'bg-slate-400' : 'bg-slate-300'}`} />
+                        {r.label}
+                        <span className="tabular-nums font-semibold text-slate-800">{fmtPct(r.impShare, 1)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[520px] border-collapse text-[15px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/90 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <th className="px-4 py-3">매체</th>
+                      <th className="px-4 py-3 text-right">노출</th>
+                      <th className="px-4 py-3 text-right">클릭</th>
+                      <th className="px-4 py-3 text-right">전환</th>
+                      <th className="px-4 py-3 text-right">비용(₩)</th>
+                      <th className="px-4 py-3 text-right">비용 비중</th>
+                      <th className="px-4 py-3 text-right">노출 비중</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dailyMediaCompare.rows.map(r => (
+                      <tr key={r.ch} className="tabular-nums text-slate-800">
+                        <td className="px-4 py-3 font-semibold text-slate-900">{r.label}</td>
+                        <td className="px-4 py-3 text-right">{fmtNum(r.imp)}</td>
+                        <td className="px-4 py-3 text-right">{fmtNum(r.clk)}</td>
+                        <td className="px-4 py-3 text-right">{fmtNum(r.cv)}</td>
+                        <td className="px-4 py-3 text-right font-medium">{fmtKRWM(r.co)}</td>
+                        <td className="px-4 py-3 text-right text-slate-600">{fmtPct(r.coShare, 1)}</td>
+                        <td className="px-4 py-3 text-right text-slate-600">{fmtPct(r.impShare, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50/60 text-sm font-semibold text-slate-900">
+                      <td className="px-4 py-3">합계</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(dailyMediaCompare.totalImp)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(dailyMediaCompare.totalClk)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtNum(dailyMediaCompare.totalCv)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{fmtKRWM(dailyMediaCompare.totalCo)}</td>
+                      <td className="px-4 py-3 text-right text-slate-500">100%</td>
+                      <td className="px-4 py-3 text-right text-slate-500">100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </Card>
           </div>
@@ -1223,17 +1239,6 @@ export default function Dashboard() {
         {/* ═══════════════════════════════════ TAB: 데이터 입력 ═══════════════════════════════════ */}
         {tab === 'input' && (
           <div className="space-y-6">
-
-            <div className="flex items-start gap-3 p-4 sm:p-5 bg-white border border-neutral-200 rounded-2xl">
-              <Info size={20} className="text-neutral-500 shrink-0 mt-0.5" />
-              <div className="text-sm text-neutral-700">
-                <p className="font-bold text-base text-neutral-900 mb-1">한 곳에만 입력하세요</p>
-                <p className="leading-relaxed text-neutral-600">
-                  아래 순서대로 채우면 됩니다. 상단에 <span className="font-semibold text-neutral-800">저장됨</span>이 보이면 팀과 같은 데이터를 쓰는 것이며,{' '}
-                  <span className="font-semibold text-neutral-800">이번 주</span> 탭의 숫자·그래프·요약이 함께 갱신됩니다. 엑셀 붙여넣기는 선택 사항입니다.
-                </p>
-              </div>
-            </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
@@ -1814,13 +1819,25 @@ export default function Dashboard() {
           </div>
         )}
 
-        <footer className="mt-10 pt-6 border-t border-neutral-200 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs text-neutral-500">
-          <span>K-Beauty SEA Outbound · Weekly Report</span>
+        <footer className="mt-10 flex flex-wrap items-center justify-end border-t border-slate-200 pt-6 text-xs text-slate-500">
           <span className="tabular-nums">
-            이번 주 전환 {thisWeekAd ? thisWeekAd.totalConversions : '—'}건 · 리드 {leads.length}곳 · 미팅 {funnelCumulative.meeting}
+            이번 주 전환 {fmtNum(thisWeekAd?.totalConversions ?? 0)}건 · 리드 {fmtNum(leads.length)}곳 · 미팅 {fmtNum(funnelCumulative.meeting)}
           </span>
         </footer>
       </main>
+
+      {tab === 'week' && (
+        <button
+          type="button"
+          aria-label="데이터 입력·수정"
+          title="데이터 입력·수정"
+          onClick={() => setTab('input')}
+          className="fixed bottom-6 right-6 z-[55] flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg shadow-blue-950/25 ring-4 ring-white transition hover:brightness-110 active:scale-[0.97]"
+          style={{ backgroundColor: NAVY }}
+        >
+          <ClipboardPenLine size={22} strokeWidth={2} />
+        </button>
+      )}
     </div>
   );
 }
