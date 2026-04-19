@@ -53,12 +53,53 @@ function normalizeDailyAdRows(arr) {
   return out;
 }
 
+/** 콜드 리스트 단계 — 필터 칩·단계 선택기 공통 팔레트 (명도 대비 유지) */
 const STAGES = [
-  { id: 'pending', label: '미발송', color: '#a3a3a3', bg: 'bg-white',  text: 'text-neutral-800' },
-  { id: 'sent',    label: '발송',   color: '#737373', bg: 'bg-white',   text: 'text-neutral-800' },
-  { id: 'replied', label: '회신',   color: '#525252', bg: 'bg-white',   text: 'text-neutral-800' },
-  { id: 'meeting', label: '미팅',   color: '#404040', bg: 'bg-white',   text: 'text-neutral-800' },
-  { id: 'won',     label: '성사',   color: '#262626', bg: 'bg-white',   text: 'text-neutral-900' },
+  {
+    id: 'pending',
+    label: '미발송',
+    dot: '#64748b',
+    chipOn: 'border-slate-300 bg-slate-100 text-slate-900 shadow-sm ring-1 ring-slate-200/80',
+    chipOff: 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50/90',
+    segOn: 'bg-slate-700 text-white shadow-sm ring-1 ring-slate-600/30',
+    segOff: 'text-slate-500 hover:bg-white/80 hover:text-slate-800',
+  },
+  {
+    id: 'sent',
+    label: '발송',
+    dot: '#0284c7',
+    chipOn: 'border-sky-300 bg-sky-50 text-sky-950 shadow-sm ring-1 ring-sky-100',
+    chipOff: 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50/70',
+    segOn: 'bg-sky-600 text-white shadow-sm ring-1 ring-sky-500/40',
+    segOff: 'text-slate-600 hover:bg-sky-50/80 hover:text-sky-900',
+  },
+  {
+    id: 'replied',
+    label: '회신',
+    dot: '#7c3aed',
+    chipOn: 'border-violet-300 bg-violet-50 text-violet-950 shadow-sm ring-1 ring-violet-100',
+    chipOff: 'border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:bg-violet-50/70',
+    segOn: 'bg-violet-600 text-white shadow-sm ring-1 ring-violet-500/40',
+    segOff: 'text-slate-600 hover:bg-violet-50/80 hover:text-violet-900',
+  },
+  {
+    id: 'meeting',
+    label: '미팅',
+    dot: '#ea580c',
+    chipOn: 'border-orange-300 bg-orange-50 text-orange-950 shadow-sm ring-1 ring-orange-100',
+    chipOff: 'border-slate-200 bg-white text-slate-600 hover:border-orange-200 hover:bg-orange-50/80',
+    segOn: 'bg-orange-600 text-white shadow-sm ring-1 ring-orange-500/40',
+    segOff: 'text-slate-600 hover:bg-orange-50/90 hover:text-orange-950',
+  },
+  {
+    id: 'won',
+    label: '성사',
+    dot: '#059669',
+    chipOn: 'border-emerald-400 bg-emerald-50 text-emerald-950 shadow-sm ring-1 ring-emerald-100',
+    chipOff: 'border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50/80',
+    segOn: 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-500/40',
+    segOff: 'text-slate-600 hover:bg-emerald-50/90 hover:text-emerald-900',
+  },
 ];
 const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
 
@@ -167,16 +208,21 @@ function PipelineStepper({ steps, rates }) {
 
 function StageSelector({ current, onChange }) {
   return (
-    <div className="inline-flex rounded-lg overflow-hidden border border-neutral-200 bg-white">
+    <div
+      className="inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50 to-slate-100/90 p-0.5 shadow-sm"
+      onClick={e => e.stopPropagation()}
+    >
       {STAGES.map(s => {
         const active = current === s.id;
         return (
           <button
             key={s.id}
+            type="button"
             onClick={(e) => { e.stopPropagation(); onChange(s.id); }}
-            className={'px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ' +
-              (active ? s.bg + ' ' + s.text : 'text-neutral-500 hover:bg-neutral-50')}
-            style={active ? { boxShadow: 'inset 0 0 0 1px ' + s.color + '40' } : {}}
+            className={
+              'rounded-lg px-2.5 py-1.5 text-[11px] font-bold tracking-tight transition-all duration-150 whitespace-nowrap ' +
+              (active ? s.segOn : s.segOff)
+            }
           >
             {s.label}
           </button>
@@ -605,21 +651,34 @@ export default function Dashboard() {
 
               <div className="flex flex-wrap gap-2 mb-3">
                 <button
+                  type="button"
                   onClick={() => setFilterStage('all')}
-                  className={'px-3 py-1.5 rounded-lg text-xs font-semibold ' +
-                    (filterStage === 'all' ? 'bg-white border border-neutral-900 text-neutral-900 shadow-sm' : 'bg-white border border-neutral-200 text-neutral-600 hover:border-neutral-300')}
+                  className={
+                    'rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ' +
+                    (filterStage === 'all'
+                      ? 'border-slate-800 bg-slate-800 text-white shadow-md shadow-slate-900/15'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50')
+                  }
                 >
                   전체 {leads.length}
                 </button>
                 {STAGES.map(s => (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() => setFilterStage(s.id)}
-                    className={'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ' +
-                      (filterStage === s.id ? 'bg-white border border-neutral-900 text-neutral-900 shadow-sm' : 'bg-white border border-neutral-200 text-neutral-600 hover:border-neutral-300')}
+                    className={
+                      'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ' +
+                      (filterStage === s.id ? s.chipOn : s.chipOff)
+                    }
                   >
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
-                    {s.label} {stageCounts[s.id]}
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full shadow-sm ring-1 ring-black/5"
+                      style={{ backgroundColor: s.dot }}
+                      aria-hidden
+                    />
+                    <span>{s.label}</span>
+                    <span className="tabular-nums opacity-90">{stageCounts[s.id]}</span>
                   </button>
                 ))}
               </div>
@@ -652,9 +711,14 @@ export default function Dashboard() {
                   <tbody className="divide-y divide-neutral-100">
                     {filteredLeads.map((l, i) => {
                       const current = brandStages[l.brand]?.stage || 'pending';
+                      const stageAccent = STAGES.find(x => x.id === current)?.dot ?? STAGES[0].dot;
                       const updatedAt = brandStages[l.brand]?.updatedAt;
                       return (
-                        <tr key={l.brand + '-' + i} className="hover:bg-neutral-50/50 group transition-colors">
+                        <tr
+                          key={l.brand + '-' + i}
+                          className="group transition-colors hover:bg-slate-50/80"
+                          style={{ borderLeft: `3px solid ${stageAccent}` }}
+                        >
                           <td className="px-5 py-3 text-neutral-400 tabular-nums text-xs">{String(i + 1).padStart(3, '0')}</td>
                           <td className="px-5 py-3">
                             <div className="font-semibold text-neutral-900">{l.brand}</div>
