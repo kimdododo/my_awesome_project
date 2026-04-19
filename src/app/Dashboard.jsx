@@ -643,7 +643,7 @@ export default function Dashboard() {
 
             {/* 헤드라인 */}
             <section className="bg-white rounded-2xl p-8 border border-neutral-200">
-              <div className="text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-3">This Week's Headline</div>
+              <div className="text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-3">This Week&apos;s Headline</div>
               <h2 className="text-3xl font-bold text-neutral-900 leading-tight" style={{ letterSpacing: '-0.02em' }}>
                 {headline}
               </h2>
@@ -1450,7 +1450,8 @@ export default function Dashboard() {
                 <div className="max-h-[420px] overflow-y-auto">
                   {linkedin.length === 0 ? (
                     <div className="text-center py-12 text-sm text-neutral-500">
-                      아직 기록 없음 — 위 폼에서<br />'링크드인' 선택 후 입력해보세요
+                      아직 기록 없음 — 위 폼에서<br />
+                      &apos;링크드인&apos; 선택 후 입력해보세요
                     </div>
                   ) : (
                     <table className="w-full text-sm">
