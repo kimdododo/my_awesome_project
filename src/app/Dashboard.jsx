@@ -7,7 +7,7 @@ import {
 import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
   Cloud, CloudOff, Loader2, Trash2, X,
-  Pencil, ChevronRight, LayoutGrid,
+  Pencil, ChevronRight,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
 import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
@@ -492,21 +492,6 @@ export default function Dashboard() {
           </div>
         </div>
       </header>
-
-      {/* 한눈에보기 — 단일 화면 (탭 전환 없음) */}
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-        <div className="mx-auto flex max-w-[1200px] items-start gap-3 px-4 py-3.5 sm:px-8 sm:items-center sm:gap-4">
-          <span className="mt-0.5 shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-2 text-blue-950">
-            <LayoutGrid size={18} strokeWidth={2.2} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-base font-bold text-slate-900 sm:text-lg">한눈에보기</h1>
-            <p className="mt-0.5 text-[11px] leading-snug text-slate-500 sm:text-xs">
-              콜드 파이프라인·리스트·오가닉(네이버 블로그·링크드인)을 아래에서 바로 확인하고 입력합니다. 별도 데이터 입력 탭은 없습니다.
-            </p>
-          </div>
-        </div>
-      </div>
 
       <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-8">
 
