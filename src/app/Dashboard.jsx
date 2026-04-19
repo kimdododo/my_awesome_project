@@ -66,19 +66,13 @@ function normalizeDailyAdRows(arr) {
 }
 
 const STAGES = [
-  { id: 'pending', label: '미발송', color: '#a3a3a3', bg: 'bg-neutral-100',  text: 'text-neutral-600' },
-  { id: 'sent',    label: '발송',   color: '#eab308', bg: 'bg-yellow-100',   text: 'text-yellow-800' },
-  { id: 'replied', label: '회신',   color: '#f97316', bg: 'bg-orange-100',   text: 'text-orange-800' },
-  { id: 'meeting', label: '미팅',   color: '#3b82f6', bg: 'bg-blue-100',     text: 'text-blue-800' },
-  { id: 'won',     label: '성사',   color: '#10b981', bg: 'bg-emerald-100',  text: 'text-emerald-800' },
+  { id: 'pending', label: '미발송', color: '#a3a3a3', bg: 'bg-white',  text: 'text-neutral-800' },
+  { id: 'sent',    label: '발송',   color: '#737373', bg: 'bg-white',   text: 'text-neutral-800' },
+  { id: 'replied', label: '회신',   color: '#525252', bg: 'bg-white',   text: 'text-neutral-800' },
+  { id: 'meeting', label: '미팅',   color: '#404040', bg: 'bg-white',   text: 'text-neutral-800' },
+  { id: 'won',     label: '성사',   color: '#262626', bg: 'bg-white',   text: 'text-neutral-900' },
 ];
 const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
-
-const CONV_COLORS = {
-  carisAds:   '#6366f1', // 보라
-  phone:      '#ec4899', // 핑크
-  channelTalk:'#14b8a6', // 청록
-};
 
 /* ============================================================
    UTILITIES
@@ -127,7 +121,7 @@ function Delta({ curr, prev, invert = false, unit = '', small = false }) {
   const isUp = diff > 0;
   const isFlat = diff === 0;
   const isGood = isFlat ? null : (invert ? !isUp : isUp);
-  const color = isFlat ? 'text-neutral-500' : isGood ? 'text-emerald-600' : 'text-red-600';
+  const color = isFlat ? 'text-neutral-500' : isGood ? 'text-neutral-800' : 'text-neutral-500';
   const Icon = isFlat ? Minus : isUp ? ArrowUpRight : ArrowDownRight;
   return (
     <span className={'inline-flex items-center gap-1 font-semibold ' + color + ' ' + (small ? 'text-xs' : 'text-sm')}>
@@ -606,7 +600,7 @@ export default function Dashboard() {
      RENDER
      ──────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
+    <div className="min-h-screen bg-white text-neutral-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
       <style>{`
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
         .tabular-nums { font-variant-numeric: tabular-nums; }
@@ -616,23 +610,23 @@ export default function Dashboard() {
       <header className="bg-white border-b border-neutral-200 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.12em] mb-1">CARIS · NSM 허브</div>
+            <div className="text-[11px] text-neutral-500 font-semibold uppercase tracking-[0.12em] mb-1">CARIS · 주간 대시보드</div>
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-neutral-900">K-Beauty SEA Outbound</h1>
             <p className="text-xs text-neutral-500 mt-1.5 max-w-md leading-relaxed">
               엑셀 시트를 나눠 쓰지 말고, 이 앱 한 곳에 주간 광고·오가닉·콜드 리스트를 입력하세요. 저장되면 팀 전체가 같은 데이터를 봅니다.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 sm:justify-end">
-            <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-neutral-50 border border-neutral-100">
+            <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-white border border-neutral-200">
               {syncStatus === 'loading' && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중</span></>)}
               {syncStatus === 'saving'  && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중</span></>)}
-              {syncStatus === 'saved'   && (<><Cloud size={13} className="text-emerald-500" /><span className="text-emerald-700 font-medium">저장됨</span></>)}
-              {syncStatus === 'error'   && (<><CloudOff size={13} className="text-red-500" /><span className="text-red-600 font-medium">저장 실패</span></>)}
+              {syncStatus === 'saved'   && (<><Cloud size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장됨</span></>)}
+              {syncStatus === 'error'   && (<><CloudOff size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장 실패</span></>)}
             </div>
-            <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-red-600 font-medium px-2 py-1.5 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100" title="모든 입력 초기화">
+            <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-neutral-900 font-medium px-2 py-1.5 rounded-lg hover:bg-neutral-50/80 border border-transparent hover:border-neutral-200" title="모든 입력 초기화">
               초기화
             </button>
-            <div className="text-left sm:text-right border border-neutral-100 rounded-xl px-4 py-2 bg-neutral-50/80">
+            <div className="text-left sm:text-right border border-neutral-200 rounded-xl px-4 py-2 bg-white">
               <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider mb-0.5">오늘</div>
               <div className="text-sm font-semibold tabular-nums text-neutral-900">{fmtKoreanDate(todayStr)}</div>
             </div>
@@ -641,12 +635,12 @@ export default function Dashboard() {
       </header>
 
       {/* TAB BAR */}
-      <div className="bg-white/95 backdrop-blur border-b border-neutral-200 sticky top-0 z-20 shadow-sm">
+      <div className="bg-white backdrop-blur border-b border-neutral-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-8 flex gap-1 sm:gap-2 overflow-x-auto pb-px">
           {[
-            { id: 'week',  label: '이번 주',     sub: 'NSM · 요약', Icon: LayoutDashboard },
-            { id: 'leads', label: '콜드 리스트', sub: '리드 · 단계', Icon: Users },
-            { id: 'input', label: '데이터 입력', sub: '시트 대체', Icon: ClipboardPenLine },
+            { id: 'week',  label: '이번 주',     sub: '한눈에 보기', Icon: LayoutDashboard },
+            { id: 'leads', label: '콜드 리스트', sub: '연락처 · 진행 단계', Icon: Users },
+            { id: 'input', label: '데이터 입력', sub: '숫자 기록', Icon: ClipboardPenLine },
           ].map(t => {
             const Icon = t.Icon;
             const active = tab === t.id;
@@ -656,9 +650,9 @@ export default function Dashboard() {
                 type="button"
                 onClick={() => setTab(t.id)}
                 className={'flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left border-b-2 transition-colors shrink-0 rounded-t-lg ' +
-                  (active ? 'border-emerald-600 bg-emerald-50/40 text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50')}
+                  (active ? 'border-neutral-900 bg-white text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50/80')}
               >
-                <span className={'p-1.5 rounded-lg ' + (active ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-500')}>
+                <span className={'p-1.5 rounded-lg border ' + (active ? 'bg-white border-neutral-300 text-neutral-800' : 'bg-white border-transparent text-neutral-500')}>
                   <Icon size={16} strokeWidth={2.2} />
                 </span>
                 <span>
@@ -677,28 +671,28 @@ export default function Dashboard() {
         {tab === 'week' && (
           <div className="space-y-6">
 
-            {/* HERO — NSM */}
-            <Card className="overflow-hidden">
-              <div className="p-8 bg-gradient-to-br from-neutral-900 to-neutral-800 text-white">
-                <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                  <Target size={14} />
-                  North Star · 이번 주 총 전환
+            {/* HERO — 이번 주 가장 중요한 숫자 */}
+            <Card className="overflow-hidden border-neutral-200 shadow-sm">
+              <div className="p-8 bg-white">
+                <div className="flex items-center gap-2 mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500">
+                  <Target size={14} className="text-neutral-400" />
+                  이번 주 광고로 들어온 문의·전환 (건수)
                 </div>
                 {thisWeekAd ? (
                   <>
                     <div className="flex items-baseline gap-3 mb-3">
-                      <span className="tabular-nums font-bold" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>
+                      <span className="tabular-nums font-bold text-neutral-900" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>
                         {fmtNum(thisWeekAd.totalConversions)}
                       </span>
                       <span className="text-3xl text-neutral-400 font-medium">건</span>
                     </div>
-                    <div className="flex items-center gap-6 text-sm text-neutral-300">
+                    <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-600">
                       {lastWeekAd ? (
                         (() => {
                           const diff = thisWeekAd.totalConversions - lastWeekAd.totalConversions;
                           const up = diff > 0;
                           const flat = diff === 0;
-                          const color = flat ? 'text-neutral-400' : up ? 'text-emerald-300' : 'text-rose-300';
+                          const color = flat ? 'text-neutral-500' : up ? 'text-neutral-800' : 'text-neutral-500';
                           const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
                           return (
                             <span className={'inline-flex items-center gap-1 font-semibold ' + color}>
@@ -708,39 +702,39 @@ export default function Dashboard() {
                           );
                         })()
                       ) : (
-                        <span className="text-neutral-400">전주 데이터 없음</span>
+                        <span className="text-neutral-500">전주 데이터 없음</span>
                       )}
-                      <span className="text-neutral-400">·</span>
-                      <span>{thisWeekAd.weekLabel || thisWeekStart}</span>
+                      <span className="text-neutral-300">|</span>
+                      <span className="text-neutral-600">{thisWeekAd.weekLabel || thisWeekStart}</span>
                     </div>
-                    <div className="mt-6 pt-6 border-t border-neutral-700 grid grid-cols-3 gap-6">
+                    <div className="mt-6 pt-6 border-t border-neutral-200 grid grid-cols-3 gap-6">
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.carisAds }} />
+                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
                           카리스 애드
                         </div>
-                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.carisAds }}>{thisWeekAd.convCarisAds}</div>
-                        <div className="text-xs text-neutral-400 mt-1">
+                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convCarisAds}</div>
+                        <div className="text-xs text-neutral-500 mt-1">
                           {thisWeekAd.totalConversions ? ((thisWeekAd.convCarisAds / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
                         </div>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.phone }} />
+                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
                           유선
                         </div>
-                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.phone }}>{thisWeekAd.convPhone}</div>
-                        <div className="text-xs text-neutral-400 mt-1">
+                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convPhone}</div>
+                        <div className="text-xs text-neutral-500 mt-1">
                           {thisWeekAd.totalConversions ? ((thisWeekAd.convPhone / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
                         </div>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CONV_COLORS.channelTalk }} />
+                        <div className="flex items-center gap-2 text-xs text-neutral-500 font-semibold uppercase tracking-wider mb-2">
+                          <span className="w-2 h-2 rounded-full bg-neutral-400" />
                           채널톡
                         </div>
-                        <div className="text-3xl font-bold tabular-nums" style={{ color: CONV_COLORS.channelTalk }}>{thisWeekAd.convChannelTalk}</div>
-                        <div className="text-xs text-neutral-400 mt-1">
+                        <div className="text-3xl font-bold tabular-nums text-neutral-900">{thisWeekAd.convChannelTalk}</div>
+                        <div className="text-xs text-neutral-500 mt-1">
                           {thisWeekAd.totalConversions ? ((thisWeekAd.convChannelTalk / thisWeekAd.totalConversions) * 100).toFixed(0) + '%' : '—'}
                         </div>
                       </div>
@@ -749,14 +743,15 @@ export default function Dashboard() {
                 ) : (
                   <>
                     <div className="flex items-baseline gap-3 mb-3">
-                      <span className="tabular-nums font-bold text-neutral-600" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>—</span>
+                      <span className="tabular-nums font-bold text-neutral-300" style={{ fontSize: 96, lineHeight: 1, letterSpacing: '-0.04em' }}>—</span>
                     </div>
-                    <p className="text-neutral-400 mb-5">이번 주 ({thisWeekStart} 월요일 기준) 광고 데이터가 아직 입력되지 않았습니다.</p>
+                    <p className="text-neutral-500 mb-5">이번 주 ({thisWeekStart} 월요일 기준) 숫자가 아직 없습니다. 아래 버튼에서 입력할 수 있습니다.</p>
                     <button
+                      type="button"
                       onClick={() => setTab('input')}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-neutral-900 font-semibold rounded-lg text-sm transition-colors"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 font-semibold rounded-lg text-sm transition-colors shadow-sm"
                     >
-                      <Plus size={16} /> 이번 주 데이터 입력하기
+                      <Plus size={16} /> 이번 주 숫자 입력하기
                     </button>
                   </>
                 )}
@@ -786,17 +781,17 @@ export default function Dashboard() {
                         <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} />
                         <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#a3a3a3' }} axisLine={false} tickLine={false} tickFormatter={shortNum} />
                         <Tooltip
-                          contentStyle={{ background: '#0a0a0a', border: 'none', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
-                          labelStyle={{ color: '#fbbf24', marginBottom: 4 }}
-                          itemStyle={{ color: '#fafafa' }}
+                          contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                          labelStyle={{ color: '#171717', marginBottom: 4, fontWeight: 600 }}
+                          itemStyle={{ color: '#404040' }}
                           formatter={(v, name) => name === 'CPA' ? fmtKRW(v) : v + '건'}
                         />
                         <Bar yAxisId="left" dataKey="totalConversions" name="총 전환" radius={[4, 4, 0, 0]}>
                           {last8.map((row) => (
-                            <Cell key={row.weekStart} fill={row.weekStart === thisWeekStart ? '#10b981' : '#1f2937'} />
+                            <Cell key={row.weekStart} fill={row.weekStart === thisWeekStart ? '#404040' : '#d4d4d4'} />
                           ))}
                         </Bar>
-                        <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
+                        <Line yAxisId="right" type="monotone" dataKey="cpa" name="CPA" stroke="#737373" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
@@ -822,7 +817,7 @@ export default function Dashboard() {
                   unit="곳"
                   delta={<Delta curr={weeklyStageChange.thisWeek.sent} prev={weeklyStageChange.lastWeek.sent} unit="곳" small />}
                   sub={`누적 ${funnelCumulative.sent} / ${leads.length} (${fmtPct(funnelCumulative.sent / (leads.length || 1))})`}
-                  accent="#eab308"
+                  accent="#171717"
                   icon={Users}
                 />
               </Card>
@@ -833,19 +828,19 @@ export default function Dashboard() {
                   unit="건"
                   delta={<Delta curr={weeklyStageChange.thisWeek.meeting + weeklyStageChange.thisWeek.won} prev={weeklyStageChange.lastWeek.meeting + weeklyStageChange.lastWeek.won} unit="건" small />}
                   sub={`누적 미팅 ${funnelCumulative.meeting} · 성사 ${funnelCumulative.won}`}
-                  accent="#10b981"
+                  accent="#171717"
                   icon={Check}
                 />
               </Card>
             </div>
 
             {/* HEADLINE (간단 요약) */}
-            <Card className="p-5 bg-neutral-900 text-white">
+            <Card className="p-5 bg-white border-neutral-200">
               <div className="flex items-start gap-3">
-                <div className="w-1 h-12 bg-emerald-400 rounded-full shrink-0 mt-1" />
+                <div className="w-1 h-12 bg-neutral-300 rounded-full shrink-0 mt-1" />
                 <div>
-                  <div className="text-xs text-emerald-300 font-semibold uppercase tracking-[0.2em] mb-1">이번 주 헤드라인</div>
-                  <h2 className="text-lg font-bold leading-snug">{headline}</h2>
+                  <div className="text-xs text-neutral-500 font-semibold uppercase tracking-[0.15em] mb-1">이번 주 한 줄 요약</div>
+                  <h2 className="text-lg font-bold leading-snug text-neutral-900">{headline}</h2>
                 </div>
               </div>
             </Card>
@@ -860,16 +855,16 @@ export default function Dashboard() {
               </SectionTitle>
               <div className="grid grid-cols-5 gap-2">
                 {[
-                  { label: '전체 리드', count: leads.length, color: '#525252' },
-                  { label: '발송',     count: funnelCumulative.sent,     color: '#eab308' },
-                  { label: '회신',     count: funnelCumulative.replied,  color: '#f97316' },
-                  { label: '미팅',     count: funnelCumulative.meeting,  color: '#3b82f6' },
-                  { label: '성사',     count: funnelCumulative.won,      color: '#10b981' },
+                  { label: '전체 리드', count: leads.length, color: '#171717' },
+                  { label: '발송',     count: funnelCumulative.sent,     color: '#404040' },
+                  { label: '회신',     count: funnelCumulative.replied,  color: '#404040' },
+                  { label: '미팅',     count: funnelCumulative.meeting,  color: '#404040' },
+                  { label: '성사',     count: funnelCumulative.won,      color: '#171717' },
                 ].map((s, i, arr) => {
                   const prev = i === 0 ? null : arr[i - 1];
                   const rate = prev && prev.count > 0 ? (s.count / prev.count) : null;
                   return (
-                    <div key={s.label} className="p-3 rounded-lg bg-neutral-50">
+                    <div key={s.label} className="p-3 rounded-lg bg-white border border-neutral-200">
                       <div className="text-xs text-neutral-500 font-semibold mb-1.5">{s.label}</div>
                       <div className="font-bold tabular-nums" style={{ fontSize: 28, lineHeight: 1, color: s.color }}>{fmtNum(s.count)}</div>
                       {rate != null && <div className="text-[11px] text-neutral-500 mt-1">→ {fmtPct(rate)}</div>}
@@ -878,8 +873,8 @@ export default function Dashboard() {
                 })}
               </div>
               <div className="mt-4">
-                <div className="h-2 bg-neutral-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-yellow-400 rounded-full transition-all duration-700" style={{ width: ((funnelCumulative.sent / (leads.length || 1)) * 100) + '%' }} />
+                <div className="h-2 bg-white border border-neutral-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-neutral-400 rounded-full transition-all duration-700" style={{ width: ((funnelCumulative.sent / (leads.length || 1)) * 100) + '%' }} />
                 </div>
                 <div className="mt-1.5 text-xs text-neutral-500">
                   <span className="font-semibold text-neutral-900">{funnelCumulative.sent}</span>
@@ -898,26 +893,26 @@ export default function Dashboard() {
                 오가닉 유입 (이번 주)
               </SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-green-50 border border-green-100">
+                <div className="p-4 rounded-xl bg-white border border-neutral-200">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500" />
-                    <span className="text-xs font-semibold text-green-800 uppercase tracking-wider">네이버 블로그</span>
+                    <span className="w-2 h-2 rounded-full bg-neutral-400" />
+                    <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wider">네이버 블로그</span>
                   </div>
-                  <div className="text-3xl font-bold tabular-nums text-green-700">{fmtNum(blogThisWeek)}<span className="text-sm text-green-600 ml-1 font-normal">회</span></div>
+                  <div className="text-3xl font-bold tabular-nums text-neutral-900">{fmtNum(blogThisWeek)}<span className="text-sm text-neutral-500 ml-1 font-normal">회</span></div>
                   <div className="mt-1.5"><Delta curr={blogThisWeek} prev={blogLastWeek} unit="회" small /></div>
                 </div>
-                <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                <div className="p-4 rounded-xl bg-white border border-neutral-200">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-600" />
-                    <span className="text-xs font-semibold text-blue-800 uppercase tracking-wider">링크드인</span>
+                    <span className="w-2 h-2 rounded-full bg-neutral-400" />
+                    <span className="text-xs font-semibold text-neutral-600 uppercase tracking-wider">링크드인</span>
                   </div>
-                  <div className="text-3xl font-bold tabular-nums text-blue-700">{fmtNum(linkedinThisWeek)}<span className="text-sm text-blue-600 ml-1 font-normal">회</span></div>
+                  <div className="text-3xl font-bold tabular-nums text-neutral-900">{fmtNum(linkedinThisWeek)}<span className="text-sm text-neutral-500 ml-1 font-normal">회</span></div>
                   <div className="mt-1.5"><Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" small /></div>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 ring-1 ring-neutral-100 shadow-sm">
+            <Card className="p-6 shadow-sm">
               <SectionTitle
                 subtitle="일별 N/G/M 시트를 앱에 옮긴 합계(이번 주 월~오늘) · 앵커 날짜는 입력 탭에서 수정"
                 right={<button type="button" onClick={() => { setTab('input'); setTimeout(() => document.getElementById('hub-daily')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} className="text-xs text-neutral-500 hover:text-neutral-900 font-semibold">일별 시트 →</button>}
@@ -926,18 +921,18 @@ export default function Dashboard() {
               </SectionTitle>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
-                  { ch: 'N', label: '네이버', dot: 'bg-emerald-500', box: 'bg-emerald-50 border-emerald-100', t: 'text-emerald-900' },
-                  { ch: 'G', label: '구글', dot: 'bg-blue-500', box: 'bg-blue-50 border-blue-100', t: 'text-blue-900' },
-                  { ch: 'M', label: '메타', dot: 'bg-indigo-500', box: 'bg-indigo-50 border-indigo-100', t: 'text-indigo-900' },
-                ].map(({ ch, label, dot, box, t }) => {
+                  { ch: 'N', label: '네이버' },
+                  { ch: 'G', label: '구글' },
+                  { ch: 'M', label: '메타' },
+                ].map(({ ch, label }) => {
                   const x = dailyThisWeekTotals[ch];
                   return (
-                    <div key={ch} className={'rounded-xl border p-4 ' + box}>
+                    <div key={ch} className="rounded-xl border border-neutral-200 bg-white p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className={'w-2 h-2 rounded-full ' + dot} />
-                        <span className={'text-xs font-bold uppercase tracking-wider ' + t}>{label}</span>
+                        <span className="w-2 h-2 rounded-full bg-neutral-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-neutral-600">{label}</span>
                       </div>
-                      <div className={'text-lg font-bold tabular-nums ' + t}>{fmtKRWM(x.co)}</div>
+                      <div className="text-lg font-bold tabular-nums text-neutral-900">{fmtKRWM(x.co)}</div>
                       <div className="text-[11px] text-neutral-500 mt-1">노출 {fmtNum(x.imp)} · 클릭 {fmtNum(x.clk)} · 전환 {fmtNum(x.cv)}</div>
                     </div>
                   );
@@ -959,17 +954,17 @@ export default function Dashboard() {
                 <button
                   onClick={() => setShowAddBrand(v => !v)}
                   className={'px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0 ' +
-                    (showAddBrand ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300' : 'bg-neutral-900 text-white hover:bg-neutral-800')}
+                    (showAddBrand ? 'bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50' : 'bg-white border border-neutral-900 text-neutral-900 hover:bg-neutral-50 shadow-sm')}
                 >
                   {showAddBrand ? <><X size={16} /> 취소</> : <><Plus size={16} /> 브랜드 추가</>}
                 </button>
               </div>
 
               {showAddBrand && (
-                <div className="mb-5 p-5 bg-neutral-50 rounded-xl border border-neutral-200">
+                <div className="mb-5 p-5 bg-white rounded-xl border border-neutral-200">
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div>
-                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">브랜드명 <span className="text-red-500">*</span></label>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1.5">브랜드명 <span className="text-neutral-400">*</span></label>
                       <input
                         value={newBrand.brand}
                         onChange={e => setNewBrand({ ...newBrand, brand: e.target.value })}
@@ -1014,7 +1009,7 @@ export default function Dashboard() {
                     <button
                       onClick={addBrand}
                       disabled={!newBrand.brand.trim()}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300"
+                      className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                     >
                       리스트에 추가
                     </button>
@@ -1026,7 +1021,7 @@ export default function Dashboard() {
                 <button
                   onClick={() => setFilterStage('all')}
                   className={'px-3 py-1.5 rounded-lg text-xs font-semibold ' +
-                    (filterStage === 'all' ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200')}
+                    (filterStage === 'all' ? 'bg-white border border-neutral-900 text-neutral-900 shadow-sm' : 'bg-white border border-neutral-200 text-neutral-600 hover:border-neutral-300')}
                 >
                   전체 {leads.length}
                 </button>
@@ -1035,7 +1030,7 @@ export default function Dashboard() {
                     key={s.id}
                     onClick={() => setFilterStage(s.id)}
                     className={'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ' +
-                      (filterStage === s.id ? s.bg + ' ' + s.text : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200')}
+                      (filterStage === s.id ? 'bg-white border border-neutral-900 text-neutral-900 shadow-sm' : 'bg-white border border-neutral-200 text-neutral-600 hover:border-neutral-300')}
                   >
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
                     {s.label} {stageCounts[s.id]}
@@ -1057,7 +1052,7 @@ export default function Dashboard() {
             <Card className="overflow-hidden">
               <div className="max-h-[680px] overflow-y-auto">
                 <table className="w-full">
-                  <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200 z-10">
+                  <thead className="sticky top-0 bg-white border-b border-neutral-200 z-10">
                     <tr className="text-xs text-neutral-600 font-semibold">
                       <th className="text-left px-5 py-3 w-12">#</th>
                       <th className="text-left px-5 py-3">브랜드</th>
@@ -1085,14 +1080,14 @@ export default function Dashboard() {
                             {updatedAt && <div className="text-xs text-neutral-400 mt-1">최근 변경: {updatedAt}</div>}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="inline-flex min-w-[2rem] justify-center text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700 border border-neutral-200">
+                            <span className="inline-flex min-w-[2rem] justify-center text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md bg-white text-neutral-700 border border-neutral-200">
                               {l.priority || '—'}
                             </span>
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-1">
                               {l.countries.map(c => (
-                                <span key={c} className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-700">{c}</span>
+                                <span key={c} className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-white text-neutral-700 border border-neutral-200">{c}</span>
                               ))}
                             </div>
                           </td>
@@ -1117,7 +1112,7 @@ export default function Dashboard() {
                           <td className="px-3 py-3">
                             <button
                               onClick={() => deleteBrand(l.brand)}
-                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="p-1.5 text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                               title="브랜드 삭제"
                             >
                               <Trash2 size={14} />
@@ -1140,23 +1135,23 @@ export default function Dashboard() {
         {tab === 'input' && (
           <div className="space-y-6">
 
-            <div className="flex items-start gap-3 p-4 sm:p-5 bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-100 rounded-2xl shadow-sm">
-              <Info size={20} className="text-sky-600 shrink-0 mt-0.5" />
-              <div className="text-sm text-sky-950">
-                <p className="font-bold text-base mb-1">시트를 앱으로 옮겼습니다</p>
-                <p className="text-sky-900/85 leading-relaxed">
-                  아래 블록 순서대로만 채우면 됩니다. <span className="font-semibold">저장됨</span>이 뜨면 Vercel KV에 반영된 것이며,{' '}
-                  <span className="font-semibold">이번 주</span> 탭의 NSM·차트·오가닉 요약이 자동으로 갱신됩니다. (엑셀 붙여넣기는 보조용입니다.)
+            <div className="flex items-start gap-3 p-4 sm:p-5 bg-white border border-neutral-200 rounded-2xl">
+              <Info size={20} className="text-neutral-500 shrink-0 mt-0.5" />
+              <div className="text-sm text-neutral-700">
+                <p className="font-bold text-base text-neutral-900 mb-1">한 곳에만 입력하세요</p>
+                <p className="leading-relaxed text-neutral-600">
+                  아래 순서대로 채우면 됩니다. 상단에 <span className="font-semibold text-neutral-800">저장됨</span>이 보이면 팀과 같은 데이터를 쓰는 것이며,{' '}
+                  <span className="font-semibold text-neutral-800">이번 주</span> 탭의 숫자·그래프·요약이 함께 갱신됩니다. 엑셀 붙여넣기는 선택 사항입니다.
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { id: 'hub-weekly', title: '1. 주간 NSM', desc: '주간 총전환·광고비', color: 'from-neutral-800 to-neutral-700' },
-                { id: 'hub-daily', title: '2. 일별 N/G/M', desc: '매체별 일 단위 시트', color: 'from-amber-700 to-orange-700' },
-                { id: 'hub-organic', title: '3. 오가닉', desc: '블로그·링크드인', color: 'from-emerald-700 to-teal-700' },
-                { id: 'hub-leads', title: '4. 콜드 리스트', desc: '리드·단계', color: 'from-violet-700 to-purple-700', tab: 'leads' },
+                { id: 'hub-weekly', title: '1. 주간 핵심', desc: '전환·광고비 한 줄' },
+                { id: 'hub-daily', title: '2. 일별 매체', desc: '네이버·구글·메타' },
+                { id: 'hub-organic', title: '3. 블로그·SNS', desc: '조회수 일별' },
+                { id: 'hub-leads', title: '4. 콜드 리스트', desc: '연락·진행', tab: 'leads' },
               ].map((c) => (
                 <button
                   key={c.id}
@@ -1165,19 +1160,19 @@ export default function Dashboard() {
                     if (c.tab) setTab(c.tab);
                     else document.getElementById(c.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
-                  className={'text-left rounded-2xl p-4 text-white bg-gradient-to-br shadow-md hover:opacity-95 transition-opacity ' + c.color}
+                  className="text-left rounded-2xl p-4 bg-white border border-neutral-200 shadow-sm hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
                 >
-                  <div className="text-xs font-semibold uppercase tracking-wider opacity-80">바로가기</div>
-                  <div className="text-lg font-bold mt-1">{c.title}</div>
-                  <div className="text-xs mt-1.5 opacity-90 leading-snug">{c.desc}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">바로가기</div>
+                  <div className="text-lg font-bold mt-1 text-neutral-900">{c.title}</div>
+                  <div className="text-xs mt-1.5 text-neutral-500 leading-snug">{c.desc}</div>
                 </button>
               ))}
             </div>
 
             {/* ─── 주간 광고 직접 입력 ─── */}
-            <Card id="hub-weekly" className="p-6 scroll-mt-28 ring-1 ring-neutral-100 shadow-sm">
+            <Card id="hub-weekly" className="p-6 scroll-mt-28 shadow-sm">
               <SectionTitle subtitle="한 주 = 한 행 · 빈 칸은 0으로 처리 · 같은 주 재입력 시 덮어쓰기">
-                주간 광고 성과 (NSM 입력)
+                주간 광고 성과 입력
               </SectionTitle>
 
               <div className="grid grid-cols-12 gap-3 mb-3">
@@ -1231,12 +1226,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-neutral-50 rounded-xl p-4 mb-3">
+              <div className="bg-white rounded-xl p-4 mb-3 border border-neutral-200">
                 <div className="text-xs font-semibold text-neutral-600 mb-2">전환 내역 (총 전환 = 카리스 애드 + 유선 + 채널톡)</div>
                 <div className="grid grid-cols-4 gap-3 items-end">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.carisAds }}>
-                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.carisAds }} />
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle bg-neutral-400" />
                       카리스 애드
                     </label>
                     <input
@@ -1248,8 +1243,8 @@ export default function Dashboard() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.phone }}>
-                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.phone }} />
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle bg-neutral-400" />
                       유선
                     </label>
                     <input
@@ -1261,8 +1256,8 @@ export default function Dashboard() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: CONV_COLORS.channelTalk }}>
-                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style={{ backgroundColor: CONV_COLORS.channelTalk }} />
+                    <label className="block text-xs font-medium text-neutral-700 mb-1">
+                      <span className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle bg-neutral-400" />
                       채널톡
                     </label>
                     <input
@@ -1275,7 +1270,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <div className="block text-xs font-semibold text-neutral-600 mb-1">= 총 전환 (자동)</div>
-                    <div className="px-3 py-2 rounded-lg bg-neutral-900 text-white text-sm font-bold tabular-nums text-center">
+                    <div className="px-3 py-2 rounded-lg border border-neutral-200 bg-white text-neutral-900 text-sm font-semibold tabular-nums text-center">
                       {(parseInt(newAdRow.convCarisAds, 10) || 0) + (parseInt(newAdRow.convPhone, 10) || 0) + (parseInt(newAdRow.convChannelTalk, 10) || 0)}건
                     </div>
                   </div>
@@ -1288,7 +1283,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   onClick={addWeeklyAdRow}
-                  className="px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-semibold rounded-lg text-sm flex items-center gap-2"
+                  className="px-5 py-2.5 bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 font-semibold rounded-lg text-sm flex items-center gap-2 shadow-sm"
                 >
                   <Plus size={16} /> 주간 데이터 저장
                 </button>
@@ -1296,7 +1291,7 @@ export default function Dashboard() {
 
               {pasteMsg && (
                 <div className={'mt-3 px-4 py-2 rounded-lg text-sm font-medium ' +
-                  (pasteMsg.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}>
+                  (pasteMsg.kind === 'ok' ? 'bg-white text-neutral-800 border border-neutral-200' : 'bg-white text-neutral-800 border border-neutral-300')}>
                   {pasteMsg.text}
                 </div>
               )}
@@ -1319,7 +1314,7 @@ export default function Dashboard() {
                     <button
                       onClick={applyPaste}
                       disabled={!pasteText.trim()}
-                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300"
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                     >
                       붙여넣기 적용
                     </button>
@@ -1328,7 +1323,7 @@ export default function Dashboard() {
               </details>
             </Card>
 
-            <Card id="hub-daily" className="p-6 scroll-mt-28 ring-1 ring-amber-100 shadow-sm bg-gradient-to-b from-amber-50/40 to-white">
+            <Card id="hub-daily" className="p-6 scroll-mt-28 border-neutral-200 shadow-sm bg-white">
               <SectionTitle subtitle={`행 ${dailyAdRows.length}건 · 날짜 = 기준일 + 오프셋(o) · 기준일: ${dailyAdsAnchor}`}>
                 일별 매체 시트 (네이버 · 구글 · 메타)
               </SectionTitle>
@@ -1336,7 +1331,7 @@ export default function Dashboard() {
                 엑셀에서 쓰던 일 단위 시트를 여기로 옮겼습니다. 셀을 수정하면 자동 저장됩니다. 기준일을 바꾸면 같은 o라도 달력 열에 표시되는 날짜가 바뀌므로, 엑셀과 맞출 때만 조정하세요.
               </p>
 
-              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-white rounded-xl border border-amber-100">
+              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-white rounded-xl border border-neutral-200">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-600 mb-1">기준일 (o=0)</label>
                   <input
@@ -1358,7 +1353,7 @@ export default function Dashboard() {
                       type="button"
                       onClick={() => setDailyChannelFilter(f.id)}
                       className={'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ' +
-                        (dailyChannelFilter === f.id ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-300')}
+                        (dailyChannelFilter === f.id ? 'bg-white text-neutral-900 border-neutral-900 shadow-sm' : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-300')}
                     >
                       {f.label}
                     </button>
@@ -1366,7 +1361,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-neutral-50 rounded-xl border border-neutral-200">
+              <div className="flex flex-wrap gap-3 items-end mb-4 p-4 bg-white rounded-xl border border-neutral-200">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-600 mb-1">매체</label>
                   <select
@@ -1391,7 +1386,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={addDailyRowFromForm}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 text-white hover:bg-amber-500"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 shadow-sm"
                 >
                   행 추가
                 </button>
@@ -1400,7 +1395,7 @@ export default function Dashboard() {
               <div className="rounded-xl border border-neutral-200 overflow-hidden bg-white">
                 <div className="max-h-[420px] sm:max-h-[50vh] overflow-y-auto">
                   <table className="w-full text-xs sm:text-sm">
-                    <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200 z-[1]">
+                    <thead className="sticky top-0 bg-white border-b border-neutral-200 z-[1]">
                       <tr className="text-left text-neutral-600 font-semibold">
                         <th className="px-3 py-2.5">날짜</th>
                         <th className="px-2 py-2.5 w-10">매체</th>
@@ -1460,7 +1455,7 @@ export default function Dashboard() {
                               <button
                                 type="button"
                                 onClick={() => deleteDailyRow(r.ch, r.o)}
-                                className="p-1 text-neutral-400 hover:text-red-600 rounded opacity-60 group-hover:opacity-100"
+                                className="p-1 text-neutral-400 hover:text-neutral-700 rounded opacity-60 group-hover:opacity-100"
                                 title="행 삭제"
                               >
                                 <Trash2 size={14} />
@@ -1480,12 +1475,12 @@ export default function Dashboard() {
               <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold">저장된 주간 행 ({weeklyAdRows.length}주)</h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">최신 순 · 이번 주는 초록</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">최신 순 · 이번 주 행은 안쪽 테두리로 구분</p>
                 </div>
               </div>
               <div className="max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200">
+                  <thead className="sticky top-0 bg-white border-b border-neutral-200">
                     <tr className="text-xs text-neutral-600 font-semibold">
                       <th className="text-left px-4 py-2.5">주 시작</th>
                       <th className="text-left px-4 py-2.5">라벨</th>
@@ -1499,10 +1494,10 @@ export default function Dashboard() {
                     {[...weeklyAdRows].sort((a, b) => b.weekStart.localeCompare(a.weekStart)).map((r, i) => {
                       const isThisWeek = r.weekStart === thisWeekStart;
                       return (
-                        <tr key={r.weekStart} className={'group hover:bg-neutral-50 ' + (isThisWeek ? 'bg-emerald-50/50' : '')}>
+                        <tr key={r.weekStart} className={'group hover:bg-neutral-50/60 ' + (isThisWeek ? 'bg-white ring-1 ring-inset ring-neutral-200' : '')}>
                           <td className="px-4 py-2.5 tabular-nums text-xs">
                             {r.weekStart}
-                            {isThisWeek && <span className="ml-1.5 text-[10px] font-bold text-emerald-600">이번 주</span>}
+                            {isThisWeek && <span className="ml-1.5 text-[10px] font-bold text-neutral-700">이번 주</span>}
                           </td>
                           <td className="px-4 py-2.5 text-xs text-neutral-500">{r.weekLabel || '—'}</td>
                           <td className="px-4 py-2.5 tabular-nums text-right">{fmtKRWM(r.cost)}</td>
@@ -1511,7 +1506,7 @@ export default function Dashboard() {
                           <td className="px-2 py-2.5">
                             <button
                               onClick={() => deleteWeeklyAdRow(r.weekStart)}
-                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="p-1.5 text-neutral-400 hover:text-neutral-800 hover:bg-neutral-50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                               title="삭제"
                             >
                               <Trash2 size={13} />
@@ -1526,7 +1521,7 @@ export default function Dashboard() {
             </Card>
 
             {/* ─── 오가닉 조회수 입력 ─── */}
-            <Card id="hub-organic" className="p-6 scroll-mt-28 ring-1 ring-neutral-100 shadow-sm">
+            <Card id="hub-organic" className="p-6 scroll-mt-28 shadow-sm">
               <SectionTitle subtitle="일별 기록 · 같은 날짜는 덮어쓰기 · Enter로 빠르게 저장">
                 오가닉 조회수 (블로그 · 링크드인)
               </SectionTitle>
@@ -1538,17 +1533,17 @@ export default function Dashboard() {
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'blog' })}
                       className={'px-4 py-2 text-sm font-semibold ' +
-                        (organicInput.source === 'blog' ? 'bg-green-100 text-green-800' : 'text-neutral-500 hover:bg-neutral-50')}
+                        (organicInput.source === 'blog' ? 'bg-white text-neutral-900 shadow-[inset_0_0_0_1px_rgba(23,23,23,0.12)]' : 'text-neutral-500 hover:bg-neutral-50/80')}
                     >
-                      <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-2 align-middle" />
+                      <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 mr-2 align-middle" />
                       네이버 블로그
                     </button>
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'linkedin' })}
                       className={'px-4 py-2 text-sm font-semibold border-l border-neutral-200 ' +
-                        (organicInput.source === 'linkedin' ? 'bg-blue-100 text-blue-800' : 'text-neutral-500 hover:bg-neutral-50')}
+                        (organicInput.source === 'linkedin' ? 'bg-white text-neutral-900 shadow-[inset_0_0_0_1px_rgba(23,23,23,0.12)]' : 'text-neutral-500 hover:bg-neutral-50/80')}
                     >
-                      <span className="inline-block w-2 h-2 rounded-full bg-blue-600 mr-2 align-middle" />
+                      <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 mr-2 align-middle" />
                       링크드인
                     </button>
                   </div>
@@ -1577,7 +1572,7 @@ export default function Dashboard() {
                 <button
                   onClick={addOrganic}
                   disabled={!organicInput.views || isNaN(parseInt(organicInput.views, 10))}
-                  className="px-5 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300 flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
                 >
                   <Plus size={16} /> 기록
                 </button>
@@ -1586,9 +1581,9 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-4 mt-5">
                 {/* 블로그 */}
                 <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-white">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="w-2 h-2 rounded-full bg-neutral-400" />
                       <span className="text-sm font-bold">네이버 블로그</span>
                     </div>
                     <span className="text-xs text-neutral-500 tabular-nums">{blog.length}일</span>
@@ -1604,7 +1599,7 @@ export default function Dashboard() {
                               <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
                               <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
                               <td className="px-2 py-2 w-8 text-right">
-                                <button onClick={() => deleteOrganic('blog', b.date)} className="text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                <button onClick={() => deleteOrganic('blog', b.date)} className="text-neutral-400 hover:text-neutral-700 opacity-0 group-hover:opacity-100">
                                   <X size={12} />
                                 </button>
                               </td>
@@ -1618,9 +1613,9 @@ export default function Dashboard() {
 
                 {/* 링크드인 */}
                 <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-white">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-600" />
+                      <span className="w-2 h-2 rounded-full bg-neutral-400" />
                       <span className="text-sm font-bold">링크드인</span>
                     </div>
                     <span className="text-xs text-neutral-500 tabular-nums">{linkedin.length}일</span>
@@ -1638,7 +1633,7 @@ export default function Dashboard() {
                               <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
                               <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
                               <td className="px-2 py-2 w-8 text-right">
-                                <button onClick={() => deleteOrganic('linkedin', b.date)} className="text-neutral-400 hover:text-red-500 opacity-0 group-hover:opacity-100">
+                                <button onClick={() => deleteOrganic('linkedin', b.date)} className="text-neutral-400 hover:text-neutral-700 opacity-0 group-hover:opacity-100">
                                   <X size={12} />
                                 </button>
                               </td>
@@ -1656,7 +1651,7 @@ export default function Dashboard() {
 
         {leadEdit && (
           <div
-            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/45 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-900/15 backdrop-blur-[2px]"
             role="presentation"
             onClick={() => setLeadEdit(null)}
           >
@@ -1714,14 +1709,14 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => setLeadEdit(null)}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-100 border border-neutral-200"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-50 border border-neutral-200"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={saveLeadEdit}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-neutral-900 text-white hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-900 text-neutral-900 hover:bg-neutral-50 shadow-sm"
                 >
                   저장
                 </button>
@@ -1733,7 +1728,7 @@ export default function Dashboard() {
         <footer className="mt-10 pt-6 border-t border-neutral-200 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs text-neutral-500">
           <span>K-Beauty SEA Outbound · Weekly Report</span>
           <span className="tabular-nums">
-            NSM · 이번 주 총 전환 {thisWeekAd ? thisWeekAd.totalConversions : '—'}건 · 리드 {leads.length}곳 · 미팅 {funnelCumulative.meeting}
+            이번 주 전환 {thisWeekAd ? thisWeekAd.totalConversions : '—'}건 · 리드 {leads.length}곳 · 미팅 {funnelCumulative.meeting}
           </span>
         </footer>
       </main>
