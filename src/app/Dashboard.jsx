@@ -375,6 +375,30 @@ export default function Dashboard() {
   const linkedinThisWeek = useMemo(() => linkedin.filter(b => b.date >= thisWeekStart && b.date <= todayStr).reduce((s, b) => s + b.views, 0), [linkedin, thisWeekStart, todayStr]);
   const linkedinLastWeek = useMemo(() => linkedin.filter(b => b.date >= lastWeekStart && b.date <= lastWeekEnd).reduce((s, b) => s + b.views, 0), [linkedin, lastWeekStart, lastWeekEnd]);
 
+  const funnelChartData = useMemo(() => ([
+    { key: 'total', label: '전체', count: leads.length },
+    { key: 'sent', label: '발송', count: funnelCumulative.sent },
+    { key: 'replied', label: '회신', count: funnelCumulative.replied },
+    { key: 'meeting', label: '미팅', count: funnelCumulative.meeting },
+    { key: 'won', label: '성사', count: funnelCumulative.won },
+  ]), [leads.length, funnelCumulative]);
+
+  const organicDailySeries = useMemo(() => {
+    const bMap = new Map(blog.map(x => [x.date, x.views]));
+    const lMap = new Map(linkedin.map(x => [x.date, x.views]));
+    const rows = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = daysBefore(todayStr, i);
+      rows.push({
+        d,
+        label: `${d.slice(5, 7)}.${d.slice(8, 10)}`,
+        blog: bMap.get(d) ?? 0,
+        linkedin: lMap.get(d) ?? 0,
+      });
+    }
+    return rows;
+  }, [blog, linkedin, todayStr]);
+
   const filteredDailyRows = useMemo(() => {
     const rows = dailyChannelFilter === 'all'
       ? dailyAdRows
@@ -882,6 +906,38 @@ export default function Dashboard() {
                   <span className="ml-2">발송 진척 {fmtPct(funnelCumulative.sent / (leads.length || 1))}</span>
                 </div>
               </div>
+
+              <div className="mt-6 pt-6 border-t border-neutral-200">
+                <div className="mb-3">
+                  <h3 className="text-sm font-bold text-neutral-900">단계별 누적 (막대)</h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">각 단계 이상으로 진행된 리드 수 · 위 숫자 카드와 동일한 기준입니다.</p>
+                </div>
+                <div className="h-44 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={funnelChartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: '#737373' }}
+                        axisLine={{ stroke: '#e5e5e5' }}
+                        tickLine={false}
+                        interval={0}
+                      />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                        labelStyle={{ color: '#171717', marginBottom: 4, fontWeight: 600 }}
+                        formatter={(v) => [`${fmtNum(v)}곳`, '누적']}
+                      />
+                      <Bar dataKey="count" name="리드" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                        {funnelChartData.map((row, i) => (
+                          <Cell key={row.key} fill={i === 0 ? '#737373' : '#d4d4d4'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </Card>
 
             {/* 오가닉 요약 */}
@@ -908,6 +964,39 @@ export default function Dashboard() {
                   </div>
                   <div className="text-3xl font-bold tabular-nums text-neutral-900">{fmtNum(linkedinThisWeek)}<span className="text-sm text-neutral-500 ml-1 font-normal">회</span></div>
                   <div className="mt-1.5"><Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" small /></div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-neutral-200">
+                <div className="mb-3">
+                  <h3 className="text-sm font-bold text-neutral-900">최근 14일 일별 조회수</h3>
+                  <p className="text-xs text-neutral-500 mt-0.5">날짜별 막대 = 블로그·링크드인 (둘 다 기록된 날은 나란히 표시)</p>
+                </div>
+                <div className="h-52 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={organicDailySeries} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="2 4" stroke="#e5e5e5" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: '#737373' }}
+                        axisLine={{ stroke: '#e5e5e5' }}
+                        tickLine={false}
+                        interval={1}
+                      />
+                      <YAxis tick={{ fontSize: 10, fill: '#737373' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 8, fontSize: 12, padding: '8px 12px' }}
+                        labelFormatter={(_, p) => {
+                          const d = p?.[0]?.payload?.d;
+                          return d ? fmtKoreanDate(d) : '';
+                        }}
+                        formatter={(v, name) => [fmtNum(v) + '회', name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                      <Bar dataKey="blog" name="네이버 블로그" fill="#d4d4d4" radius={[2, 2, 0, 0]} maxBarSize={14} />
+                      <Bar dataKey="linkedin" name="링크드인" fill="#a3a3a3" radius={[2, 2, 0, 0]} maxBarSize={14} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </Card>
