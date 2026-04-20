@@ -3,13 +3,16 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, Legend,
+  LineChart, Line,
 } from 'recharts';
 import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
   Cloud, CloudOff, Loader2, Trash2, X,
   Pencil, ChevronRight,
+  Kanban, Users, BookOpen, TrendingUp,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
+import { INITIAL_CONVERSION_CHANNEL_ROWS } from '../data/conversionChannelSeed';
 import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
 import { DAILY_AD_ANCHOR_DEFAULT } from '../lib/dailyAdsDates';
 
@@ -21,6 +24,13 @@ function localISODate(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function formatLocalTimeHMS(d = new Date()) {
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }
 
 const RAW = SEED;
@@ -52,6 +62,33 @@ function normalizeDailyAdRows(arr) {
   }
   return out;
 }
+
+function nonNegInt(v) {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+function normalizeConversionChannelRows(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const out = [];
+  for (const r of arr) {
+    if (!r || typeof r !== 'object') return null;
+    const karisAd = nonNegInt(r.karisAd ?? r.karis_ad);
+    const phone = nonNegInt(r.phone);
+    const channelTalk = nonNegInt(r.channelTalk ?? r.channel_talk);
+    const total = nonNegInt(r.total ?? r.total_conversions);
+    const id = typeof r.id === 'string' && r.id.trim() ? r.id.trim() : `cc-${out.length}`;
+    out.push({ id, karisAd, phone, channelTalk, total });
+  }
+  return out;
+}
+
+function cloneConversionChannelSeed() {
+  return INITIAL_CONVERSION_CHANNEL_ROWS.map(r => ({ ...r }));
+}
+
+const LOCAL_BACKUP_KEY = 'kbeauty-dashboard:state:v1';
 
 /** 콜드 리스트 단계 — 필터 칩·단계 선택기 공통 팔레트 (명도 대비 유지) */
 const STAGES = [
@@ -103,10 +140,28 @@ const STAGES = [
 ];
 const STAGE_ORDER = { pending: 0, sent: 1, replied: 2, meeting: 3, won: 4 };
 
-/** 막대 차트에서 가장 최신 구간만 강조 */
-const CHART_BAR_LATEST = '#1d4ed8';
-const CHART_BAR_MUTED = '#cbd5e1';
-const CHART_BAR_MUTED_LI = '#94a3b8';
+/** 파이프라인 막대 — 단계별 (스테퍼 색과 대응) */
+const PIPELINE_BAR_FILL = {
+  total: '#2c3c63',
+  sent: '#1d6a96',
+  replied: '#7c3aed',
+  meeting: '#ea580c',
+  won: '#059669',
+};
+
+/** 오가닉 일별 막대 — 네이버 블로그 초록 / 링크드인 블루 (표·카드와 동일 톤) */
+const ORGANIC_BLOG_BAR = '#86efac';
+const ORGANIC_BLOG_BAR_LAST = '#16a34a';
+const ORGANIC_LI_BAR = '#93c5fd';
+const ORGANIC_LI_BAR_LAST = '#2563eb';
+
+/** 인바운드 리드 섹션 — 꺾은선 색상 */
+const CC_LINE = {
+  karisAd: { stroke: '#2563eb', fill: '#3b82f6' },
+  phone: { stroke: '#7c3aed', fill: '#8b5cf6' },
+  channelTalk: { stroke: '#ea580c', fill: '#f97316' },
+  total: { stroke: '#0f766e', fill: '#14b8a6' },
+};
 
 /* ============================================================
    UTILITIES
@@ -132,6 +187,22 @@ function daysBefore(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+/** Recharts 기본 Legend는 Bar마다 Cell로 색을 바꾸면 아이콘이 검정으로 나오는 경우가 있어 고정 범례 사용 */
+function OrganicBarLegend() {
+  return (
+    <div className="flex flex-wrap justify-center gap-x-7 gap-y-1 px-2 pt-2 text-[11px] font-semibold tracking-tight">
+      <span className="inline-flex items-center gap-2 text-emerald-900">
+        <span className="inline-block h-3 w-3 shrink-0 rounded-sm border border-white shadow-sm" style={{ backgroundColor: ORGANIC_BLOG_BAR_LAST }} />
+        네이버 블로그
+      </span>
+      <span className="inline-flex items-center gap-2 text-blue-900">
+        <span className="inline-block h-3 w-3 shrink-0 rounded-sm border border-white shadow-sm" style={{ backgroundColor: ORGANIC_LI_BAR_LAST }} />
+        링크드인
+      </span>
+    </div>
+  );
 }
 
 /* ============================================================
@@ -166,15 +237,57 @@ function Card({ children, className = '', ...rest }) {
   );
 }
 
-function SectionTitle({ children, subtitle, right }) {
+function SectionTitle({ children, right }) {
   return (
     <div className="mb-5 flex items-end justify-between gap-4">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">{children}</h2>
-        {subtitle && <p className="mt-1.5 text-[15px] leading-relaxed text-slate-500">{subtitle}</p>}
       </div>
       {right && <div className="shrink-0">{right}</div>}
     </div>
+  );
+}
+
+const MAIN_NAV = [
+  { id: 'pipeline', label: '콜드 파이프라인', short: '파이프라인', Icon: Kanban },
+  { id: 'leads', label: '아웃바운드 리드', short: '리드', Icon: Users },
+  { id: 'organic', label: '오가닉', short: '오가닉', Icon: BookOpen },
+  { id: 'conversion', label: '인바운드 리드', short: '인바운드 리드', Icon: TrendingUp },
+];
+
+function MainNavButton({ item, active, onSelect, variant }) {
+  const Icon = item.Icon;
+  const isOn = active === item.id;
+  if (variant === 'rail') {
+    return (
+      <button
+        type="button"
+        onClick={() => onSelect(item.id)}
+        className={
+          'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all ' +
+          (isOn
+            ? 'bg-slate-900 text-white shadow-md shadow-slate-900/25 ring-1 ring-slate-800/60'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900')
+        }
+      >
+        <Icon size={18} strokeWidth={2} className={isOn ? 'text-sky-300' : 'text-slate-400'} aria-hidden />
+        <span className="min-w-0 leading-snug">{item.label}</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(item.id)}
+      className={
+        'shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-bold transition-all ' +
+        (isOn
+          ? 'bg-slate-900 text-white shadow-sm'
+          : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300')
+      }
+    >
+      {item.short}
+    </button>
   );
 }
 
@@ -209,7 +322,7 @@ function PipelineStepper({ steps, rates }) {
 function StageSelector({ current, onChange }) {
   return (
     <div
-      className="inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50 to-slate-100/90 p-0.5 shadow-sm"
+      className="inline-flex flex-nowrap gap-0.5 rounded-xl border border-slate-200/90 bg-gradient-to-b from-slate-50 to-slate-100/90 p-0.5 shadow-sm"
       onClick={e => e.stopPropagation()}
     >
       {STAGES.map(s => {
@@ -220,7 +333,7 @@ function StageSelector({ current, onChange }) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onChange(s.id); }}
             className={
-              'rounded-lg px-2.5 py-1.5 text-[11px] font-bold tracking-tight transition-all duration-150 whitespace-nowrap ' +
+              'shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-bold tracking-tight transition-all duration-150 whitespace-nowrap ' +
               (active ? s.segOn : s.segOff)
             }
           >
@@ -237,11 +350,14 @@ function StageSelector({ current, onChange }) {
    ============================================================ */
 
 export default function Dashboard() {
-  const todayStr = useMemo(() => localISODate(), []);
+  /** 로컬 캘린더 기준 오늘 — 첫 마운트만 고정하면 자정 이후에도 어제로 남으므로 주기·포커스에서 갱신 */
+  const [todayStr, setTodayStr] = useState(() => localISODate());
+  const [clockStr, setClockStr] = useState(() => formatLocalTimeHMS());
 
   // ─── Sync ───
   const [syncStatus, setSyncStatus] = useState('loading');
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [storageMode, setStorageMode] = useState('unknown'); // 'kv' | 'memory' | 'unknown'
 
   // ─── Core data ───
   const [leads, setLeads] = useState(INITIAL_LEADS);
@@ -250,6 +366,11 @@ export default function Dashboard() {
   const [weeklyAdRows, setWeeklyAdRows] = useState(INITIAL_WEEKLY_AD_ROWS);
   const [dailyAdRows, setDailyAdRows] = useState(INITIAL_DAILY_AD_ROWS);
   const [dailyAdsAnchor, setDailyAdsAnchor] = useState(DAILY_AD_ANCHOR_DEFAULT);
+  const [conversionChannelRows, setConversionChannelRows] = useState(cloneConversionChannelSeed);
+  const [conversionInput, setConversionInput] = useState({
+    karisAd: '', phone: '', channelTalk: '', total: '',
+  });
+  const [mainNav, setMainNav] = useState('pipeline');
 
   // ─── Brand stages ───
   const [brandStages, setBrandStages] = useState({});
@@ -266,12 +387,33 @@ export default function Dashboard() {
     source: 'blog', date: localISODate(), views: '',
   }));
 
+  useEffect(() => {
+    function tick() {
+      setClockStr(formatLocalTimeHMS());
+      const d = localISODate();
+      setTodayStr(prev => (prev === d ? prev : d));
+    }
+    tick();
+    const id = window.setInterval(tick, 1000);
+    function onVisibility() {
+      if (document.visibilityState === 'visible') tick();
+    }
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   // ─── Date range ───
   const thisWeekStart = useMemo(() => weekStart(todayStr), [todayStr]);
   const lastWeekStart = useMemo(() => daysBefore(thisWeekStart, 7), [thisWeekStart]);
   const lastWeekEnd = useMemo(() => daysBefore(thisWeekStart, 1), [thisWeekStart]);
 
   // ─── Persistent storage ───
+  const storageRef = useRef('unknown'); // 'kv' | 'memory' | 'unknown'
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -280,8 +422,25 @@ export default function Dashboard() {
         if (cancelled) return;
         if (!res.ok) throw new Error('load failed');
         const data = await res.json();
+        if (data?.storage) {
+          storageRef.current = data.storage;
+          setStorageMode(data.storage);
+        }
+
+        let s = null;
         if (data && !data.empty && data.data) {
-          const s = data.data;
+          s = data.data;
+        } else {
+          // Fallback: browser-local backup (useful when server is using memory or when KV isn't attached)
+          try {
+            const raw = window.localStorage.getItem(LOCAL_BACKUP_KEY);
+            if (raw) s = JSON.parse(raw);
+          } catch {
+            // ignore
+          }
+        }
+
+        if (s) {
           if (s.leads) setLeads(s.leads);
           if (s.blog) setBlog(s.blog);
           if (s.linkedin) setLinkedin(s.linkedin);
@@ -293,10 +452,37 @@ export default function Dashboard() {
           if (typeof s.dailyAdsAnchor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.dailyAdsAnchor)) {
             setDailyAdsAnchor(s.dailyAdsAnchor);
           }
+          const cc = normalizeConversionChannelRows(s.conversionChannelRows);
+          if (cc) setConversionChannelRows(cc);
         }
         setSyncStatus('saved');
         setHasLoaded(true);
       } catch (err) {
+        // If server load fails, try local backup before giving up.
+        try {
+          const raw = window.localStorage.getItem(LOCAL_BACKUP_KEY);
+          if (raw) {
+            const s = JSON.parse(raw);
+            if (s.leads) setLeads(s.leads);
+            if (s.blog) setBlog(s.blog);
+            if (s.linkedin) setLinkedin(s.linkedin);
+            if (s.brandStages) setBrandStages(s.brandStages);
+            if (s.stageHistory) setStageHistory(s.stageHistory);
+            if (s.weeklyAdRows) setWeeklyAdRows(s.weeklyAdRows);
+            const dr = normalizeDailyAdRows(s.dailyAdRows);
+            if (dr) setDailyAdRows(dr);
+            if (typeof s.dailyAdsAnchor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.dailyAdsAnchor)) {
+              setDailyAdsAnchor(s.dailyAdsAnchor);
+            }
+            const cc = normalizeConversionChannelRows(s.conversionChannelRows);
+            if (cc) setConversionChannelRows(cc);
+            setSyncStatus('saved');
+            setHasLoaded(true);
+            return;
+          }
+        } catch {
+          // ignore
+        }
         setSyncStatus('error');
         setHasLoaded(true);
       }
@@ -311,30 +497,50 @@ export default function Dashboard() {
     setSyncStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
+      const payload = {
+        leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory,
+        dailyAdRows, dailyAdsAnchor, conversionChannelRows,
+        savedAt: new Date().toISOString(),
+      };
+
+      // Always keep a browser-local backup (survives server restarts; single-device).
       try {
-        const payload = {
-          leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory,
-          dailyAdRows, dailyAdsAnchor,
-          savedAt: new Date().toISOString(),
-        };
+        window.localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(payload));
+      } catch {
+        // ignore quota / disabled storage
+      }
+
+      try {
         const res = await fetch('/api/state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (res.ok) setSyncStatus('saved');
+        if (res.ok) {
+          try {
+            const data = await res.json();
+            if (data?.storage) {
+              storageRef.current = data.storage;
+              setStorageMode(data.storage);
+            }
+          } catch {
+            // ignore
+          }
+          setSyncStatus('saved');
+        }
         else setSyncStatus('error');
       } catch (err) {
         setSyncStatus('error');
       }
     }, 800);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory, dailyAdRows, dailyAdsAnchor, hasLoaded]);
+  }, [leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory, dailyAdRows, dailyAdsAnchor, conversionChannelRows, hasLoaded]);
 
   async function resetAllData() {
-    if (!confirm('모든 입력 데이터를 초기화합니다.\n콜드 리스트·단계, 추가 브랜드, 저장된 광고 시트(백업용), 링크드인·블로그 기록이 모두 사라집니다.\n되돌릴 수 없습니다. 계속할까요?')) return;
+    if (!confirm('모든 입력 데이터를 초기화합니다.\n콜드 리스트·단계, 추가 브랜드, 저장된 광고 시트(백업용), 링크드인·블로그 기록, 인바운드 리드 기록이 모두 사라집니다.\n되돌릴 수 없습니다. 계속할까요?')) return;
     try {
       await fetch('/api/state', { method: 'DELETE' });
+      try { window.localStorage.removeItem(LOCAL_BACKUP_KEY); } catch { /* ignore */ }
       setLeads(INITIAL_LEADS);
       setBlog(INITIAL_BLOG);
       setLinkedin([]);
@@ -343,6 +549,7 @@ export default function Dashboard() {
       setDailyAdsAnchor(DAILY_AD_ANCHOR_DEFAULT);
       setBrandStages({});
       setStageHistory([]);
+      setConversionChannelRows(cloneConversionChannelSeed());
       setSyncStatus('saved');
     } catch (err) {
       alert('초기화 실패: ' + err.message);
@@ -405,11 +612,11 @@ export default function Dashboard() {
   }, [leads.length, funnelCumulative]);
 
   const pipelineChartData = useMemo(
-    () => pipelineStepsModel.steps.map((s, i, arr) => ({
+    () => pipelineStepsModel.steps.map(s => ({
       key: s.key,
       label: s.short,
       count: s.count,
-      fill: i === arr.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED,
+      fill: PIPELINE_BAR_FILL[s.key] ?? '#64748b',
     })),
     [pipelineStepsModel],
   );
@@ -429,6 +636,15 @@ export default function Dashboard() {
     }
     return rows;
   }, [blog, linkedin, todayStr]);
+
+  const conversionChannelChartData = useMemo(
+    () => conversionChannelRows.map((r, i) => ({
+      ...r,
+      idx: i + 1,
+      label: `#${String(i + 1).padStart(2, '0')}`,
+    })),
+    [conversionChannelRows],
+  );
 
   /* ────────────────────────────────────────────
      HANDLERS
@@ -494,6 +710,27 @@ export default function Dashboard() {
     else setLinkedin(p => p.filter(b => b.date !== date));
   }
 
+  function addConversionChannelRow() {
+    const id = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `cc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    setConversionChannelRows(p => [
+      ...p,
+      {
+        id,
+        karisAd: nonNegInt(conversionInput.karisAd),
+        phone: nonNegInt(conversionInput.phone),
+        channelTalk: nonNegInt(conversionInput.channelTalk),
+        total: nonNegInt(conversionInput.total),
+      },
+    ]);
+    setConversionInput({ karisAd: '', phone: '', channelTalk: '', total: '' });
+  }
+
+  function deleteConversionChannelRow(id) {
+    setConversionChannelRows(p => p.filter(r => r.id !== id));
+  }
+
   /* ────────────────────────────────────────────
      Filtered leads
      ──────────────────────────────────────────── */
@@ -514,19 +751,21 @@ export default function Dashboard() {
      RENDER
      ──────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900" style={{ fontFamily: '"Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif' }}>
-      <style>{`
-        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
-        .tabular-nums { font-variant-numeric: tabular-nums; }
-      `}</style>
-
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
       {/* HEADER */}
-      <header className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-8 py-3 sm:py-4 flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+      <header className="shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-end gap-3 px-4 py-3 sm:gap-4 sm:px-8 sm:py-4">
           <div className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 bg-white border border-neutral-200">
             {syncStatus === 'loading' && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">불러오는 중</span></>)}
             {syncStatus === 'saving'  && (<><Loader2 size={13} className="animate-spin text-neutral-400" /><span className="text-neutral-500">저장 중</span></>)}
-            {syncStatus === 'saved'   && (<><Cloud size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장됨</span></>)}
+            {syncStatus === 'saved'   && (
+              <>
+                <Cloud size={13} className="text-neutral-500" />
+                <span className="text-neutral-700 font-medium">
+                  {storageMode === 'memory' ? '임시 저장(이 브라우저)' : '저장됨'}
+                </span>
+              </>
+            )}
             {syncStatus === 'error'   && (<><CloudOff size={13} className="text-neutral-500" /><span className="text-neutral-700 font-medium">저장 실패</span></>)}
           </div>
           <button onClick={resetAllData} className="text-xs text-neutral-500 hover:text-neutral-900 font-medium px-2 py-1.5 rounded-lg hover:bg-neutral-50/80 border border-transparent hover:border-neutral-200" title="모든 입력 초기화">
@@ -535,26 +774,41 @@ export default function Dashboard() {
           <div className="text-left sm:text-right border border-neutral-200 rounded-xl px-4 py-2 bg-white">
             <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider mb-0.5">오늘</div>
             <div className="text-sm font-semibold tabular-nums text-neutral-900">{fmtKoreanDate(todayStr)}</div>
+            <div className="mt-1 text-base font-bold tabular-nums tracking-tight text-neutral-800">{clockStr}</div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-8">
+      <main className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-hidden md:flex-row">
+        <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2.5 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {MAIN_NAV.map(item => (
+            <MainNavButton key={item.id} item={item} active={mainNav} onSelect={setMainNav} variant="pill" />
+          ))}
+        </div>
 
-        <div className="space-y-6">
-            {/* 파이프라인 — 가로 스테퍼 + 단계 간 전환율 */}
+        <aside className="relative hidden w-[13.75rem] shrink-0 flex-col border-r border-slate-200 bg-white py-5 pl-4 pr-3 shadow-sm shadow-slate-900/[0.02] md:sticky md:top-0 md:self-start md:max-h-screen md:overflow-y-auto md:flex">
+          <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">메뉴</p>
+          <nav className="flex flex-col gap-1" aria-label="대시보드 섹션">
+            {MAIN_NAV.map(item => (
+              <MainNavButton key={item.id} item={item} active={mainNav} onSelect={setMainNav} variant="rail" />
+            ))}
+          </nav>
+        </aside>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 py-6 sm:px-7 lg:px-10">
+          <div className={`mx-auto w-full flex-1 space-y-6 ${mainNav === 'leads' ? 'max-w-[1120px]' : 'max-w-[960px]'}`}>
+
+            {mainNav === 'pipeline' && (
+            <>
             <Card className="p-6 md:p-7">
-              <SectionTitle subtitle="전체 리드 → 발송 → 회신 → 미팅 → 성사 · 각 단계 이상 누적 · 화살표 사이는 이전 단계 대비 전환율">
+              <SectionTitle>
                 콜드 파이프라인
               </SectionTitle>
               <PipelineStepper steps={pipelineStepsModel.steps} rates={pipelineStepsModel.rates} />
-              <p className="mt-4 text-xs leading-relaxed text-slate-500">
-                전환율 = 다음 단계 인원 ÷ 이전 단계 인원. 리스트에서 가장 앞선 단계만 반영합니다.
-              </p>
             </Card>
 
             <Card className="overflow-hidden p-6 md:p-7">
-              <SectionTitle subtitle="위 스테퍼와 동일한 누적 인원 · 막대 = 해당 단계 이상 도달한 리드 수">
+              <SectionTitle>
                 콜드 파이프라인 그래프
               </SectionTitle>
               <div className="h-56 w-full min-w-0">
@@ -567,7 +821,7 @@ export default function Dashboard() {
                       contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, padding: '6px 10px' }}
                       formatter={(v) => [fmtNum(v) + '곳', '누적']}
                     />
-                    <Bar dataKey="count" name="누적" radius={[4, 4, 0, 0]} maxBarSize={52}>
+                    <Bar dataKey="count" name="누적" radius={[6, 6, 0, 0]} maxBarSize={52} stroke="#fff" strokeWidth={1}>
                       {pipelineChartData.map(row => (
                         <Cell key={row.key} fill={row.fill} />
                       ))}
@@ -576,12 +830,15 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </Card>
+            </>
+            )}
 
+            {mainNav === 'leads' && (
+            <>
             <Card id="hub-leads" className="p-6 scroll-mt-28">
               <div className="flex items-start justify-between mb-5 gap-4">
                 <div>
                   <h2 className="text-xl font-bold">콜드 아웃바운드 리스트</h2>
-                  <p className="text-sm text-neutral-500 mt-1">단계 변경은 즉시 저장되며, 우측 <span className="font-semibold text-neutral-700">편집</span>에서 국가·이메일·플랫폼을 시트처럼 수정할 수 있습니다.</p>
                 </div>
                 <button
                   onClick={() => setShowAddBrand(v => !v)}
@@ -695,15 +952,15 @@ export default function Dashboard() {
             </Card>
 
             <Card className="overflow-hidden">
-              <div className="max-h-[680px] overflow-y-auto">
-                <table className="w-full">
+              <div className="max-h-[680px] overflow-x-auto overflow-y-auto">
+                <table className="w-full min-w-[920px]">
                   <thead className="sticky top-0 bg-white border-b border-neutral-200 z-10">
                     <tr className="text-xs text-neutral-600 font-semibold">
-                      <th className="text-left px-5 py-3 w-12">#</th>
-                      <th className="text-left px-5 py-3">브랜드</th>
-                      <th className="text-left px-4 py-3 w-14">등급</th>
-                      <th className="text-left px-5 py-3">국가</th>
-                      <th className="text-left px-5 py-3">단계</th>
+                      <th className="w-12 px-5 py-3 text-left">#</th>
+                      <th className="px-5 py-3 text-left">브랜드</th>
+                      <th className="w-14 px-4 py-3 text-left">등급</th>
+                      <th className="px-5 py-3 text-left">국가</th>
+                      <th className="min-w-[288px] whitespace-nowrap px-5 py-3 text-left">단계</th>
                       <th className="text-right px-4 py-3 w-24">편집</th>
                       <th className="px-3 py-3 w-10" />
                     </tr>
@@ -741,7 +998,7 @@ export default function Dashboard() {
                               ))}
                             </div>
                           </td>
-                          <td className="px-5 py-3">
+                          <td className="min-w-[288px] whitespace-nowrap px-5 py-3 align-middle">
                             <StageSelector current={current} onChange={(ns) => setStage(l.brand, ns)} />
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -778,34 +1035,34 @@ export default function Dashboard() {
                 )}
               </div>
             </Card>
+            </>
+            )}
 
+            {mainNav === 'organic' && (
+            <>
             <Card className="p-6">
-              <SectionTitle subtitle="이번 주 합계 · 아래 그래프는 최근 14일">
+              <SectionTitle>
                 오가닉 유입 (네이버 블로그 · 링크드인)
               </SectionTitle>
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                <div className="rounded-xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm shadow-emerald-900/[0.04]">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-neutral-400" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-600">네이버 블로그</span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-sm ring-2 ring-emerald-200" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-emerald-900">네이버 블로그</span>
                   </div>
-                  <div className="text-3xl font-bold tabular-nums text-neutral-900">{fmtNum(blogThisWeek)}<span className="ml-1 text-sm font-normal text-neutral-500">회</span></div>
+                  <div className="text-3xl font-bold tabular-nums text-emerald-950">{fmtNum(blogThisWeek)}<span className="ml-1 text-sm font-normal text-emerald-700/80">회</span></div>
                   <div className="mt-1.5"><Delta curr={blogThisWeek} prev={blogLastWeek} unit="회" small /></div>
                 </div>
-                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                <div className="rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm shadow-blue-900/[0.04]">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-neutral-400" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-600">링크드인</span>
+                    <span className="h-2.5 w-2.5 rounded-full bg-blue-600 shadow-sm ring-2 ring-blue-200" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-900">링크드인</span>
                   </div>
-                  <div className="text-3xl font-bold tabular-nums text-neutral-900">{fmtNum(linkedinThisWeek)}<span className="ml-1 text-sm font-normal text-neutral-500">회</span></div>
+                  <div className="text-3xl font-bold tabular-nums text-blue-950">{fmtNum(linkedinThisWeek)}<span className="ml-1 text-sm font-normal text-blue-700/80">회</span></div>
                   <div className="mt-1.5"><Delta curr={linkedinThisWeek} prev={linkedinLastWeek} unit="회" small /></div>
                 </div>
               </div>
               <div className="mt-6 border-t border-neutral-200 pt-6">
-                <div className="mb-3">
-                  <h3 className="text-sm font-bold text-neutral-900">최근 14일 일별 조회수</h3>
-                  <p className="mt-0.5 text-xs text-neutral-500">날짜별 막대 = 블로그·링크드인</p>
-                </div>
                 <div className="h-52 w-full min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={organicDailySeries} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
@@ -820,15 +1077,21 @@ export default function Dashboard() {
                         }}
                         formatter={(v, name) => [fmtNum(v) + '회', name]}
                       />
-                      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                      <Bar dataKey="blog" name="네이버 블로그" radius={[2, 2, 0, 0]} maxBarSize={14}>
+                      <Legend content={<OrganicBarLegend />} />
+                      <Bar dataKey="blog" name="네이버 블로그" fill={ORGANIC_BLOG_BAR_LAST} radius={[3, 3, 0, 0]} maxBarSize={16} stroke="#fff" strokeWidth={0.5}>
                         {organicDailySeries.map((row, idx) => (
-                          <Cell key={row.d + '-blog'} fill={idx === organicDailySeries.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED} />
+                          <Cell
+                            key={row.d + '-blog'}
+                            fill={idx === organicDailySeries.length - 1 ? ORGANIC_BLOG_BAR_LAST : ORGANIC_BLOG_BAR}
+                          />
                         ))}
                       </Bar>
-                      <Bar dataKey="linkedin" name="링크드인" radius={[2, 2, 0, 0]} maxBarSize={14}>
+                      <Bar dataKey="linkedin" name="링크드인" fill={ORGANIC_LI_BAR_LAST} radius={[3, 3, 0, 0]} maxBarSize={16} stroke="#fff" strokeWidth={0.5}>
                         {organicDailySeries.map((row, idx) => (
-                          <Cell key={row.d + '-li'} fill={idx === organicDailySeries.length - 1 ? CHART_BAR_LATEST : CHART_BAR_MUTED_LI} />
+                          <Cell
+                            key={row.d + '-li'}
+                            fill={idx === organicDailySeries.length - 1 ? ORGANIC_LI_BAR_LAST : ORGANIC_LI_BAR}
+                          />
                         ))}
                       </Bar>
                     </BarChart>
@@ -838,7 +1101,7 @@ export default function Dashboard() {
             </Card>
 
             <Card id="hub-organic" className="scroll-mt-28 p-6 shadow-sm">
-              <SectionTitle subtitle="일별 기록 · 같은 날짜는 덮어쓰기 · Enter로 빠르게 저장">
+              <SectionTitle>
                 오가닉 조회수 (블로그 · 링크드인)
               </SectionTitle>
 
@@ -849,17 +1112,21 @@ export default function Dashboard() {
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'blog' })}
                       className={'px-4 py-2 text-sm font-semibold ' +
-                        (organicInput.source === 'blog' ? 'bg-white text-neutral-900 shadow-[inset_0_0_0_1px_rgba(23,23,23,0.12)]' : 'text-neutral-500 hover:bg-neutral-50/80')}
+                        (organicInput.source === 'blog'
+                          ? 'bg-emerald-50 text-emerald-950 shadow-[inset_0_0_0_1px_rgba(5,150,105,0.35)]'
+                          : 'text-neutral-500 hover:bg-emerald-50/50')}
                     >
-                      <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 mr-2 align-middle" />
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 mr-2 align-middle ring-2 ring-emerald-200" />
                       네이버 블로그
                     </button>
                     <button
                       onClick={() => setOrganicInput({ ...organicInput, source: 'linkedin' })}
                       className={'px-4 py-2 text-sm font-semibold border-l border-neutral-200 ' +
-                        (organicInput.source === 'linkedin' ? 'bg-white text-neutral-900 shadow-[inset_0_0_0_1px_rgba(23,23,23,0.12)]' : 'text-neutral-500 hover:bg-neutral-50/80')}
+                        (organicInput.source === 'linkedin'
+                          ? 'bg-blue-50 text-blue-950 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.35)]'
+                          : 'text-neutral-500 hover:bg-blue-50/50')}
                     >
-                      <span className="inline-block w-2 h-2 rounded-full bg-neutral-400 mr-2 align-middle" />
+                      <span className="inline-block h-2 w-2 rounded-full bg-blue-600 mr-2 align-middle ring-2 ring-blue-200" />
                       링크드인
                     </button>
                   </div>
@@ -896,26 +1163,35 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-2 gap-4 mt-5">
                 {/* 블로그 */}
-                <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-white">
+                <div className="overflow-hidden rounded-xl border-2 border-emerald-200 bg-emerald-50/40 shadow-sm shadow-emerald-900/[0.03]">
+                  <div className="flex items-center justify-between border-b-2 border-emerald-200 bg-emerald-100/90 px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                      <span className="text-sm font-bold">네이버 블로그</span>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-600 ring-2 ring-emerald-300" />
+                      <span className="text-sm font-bold text-emerald-950">네이버 블로그</span>
                     </div>
-                    <span className="text-xs text-neutral-500 tabular-nums">{blog.length}일</span>
+                    <span className="tabular-nums text-xs font-semibold text-emerald-800/90">{blog.length}일</span>
                   </div>
-                  <div className="max-h-[260px] overflow-y-auto">
+                  <div className="max-h-[260px] overflow-y-auto bg-white/80">
                     {blog.length === 0 ? (
-                      <div className="text-center py-8 text-sm text-neutral-400">기록 없음</div>
+                      <div className="py-8 text-center text-sm text-emerald-700/60">기록 없음</div>
                     ) : (
                       <table className="w-full text-sm">
-                        <tbody className="divide-y divide-neutral-100">
-                          {blog.slice(0, 40).map(b => (
-                            <tr key={b.date} className="hover:bg-neutral-50 group">
-                              <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
-                              <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
-                              <td className="px-2 py-2 w-8 text-right">
-                                <button onClick={() => deleteOrganic('blog', b.date)} className="text-neutral-400 hover:text-neutral-700 opacity-0 group-hover:opacity-100">
+                        <thead>
+                          <tr className="border-b border-emerald-100 bg-emerald-50/90 text-left text-[11px] font-bold uppercase tracking-wide text-emerald-800">
+                            <th className="w-28 px-4 py-2">날짜</th>
+                            <th className="px-4 py-2 text-right">조회수</th>
+                            <th className="w-8 px-2 py-2" aria-label="삭제" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-emerald-100">
+                          {blog.slice(0, 40).map(row => (
+                            <tr key={row.date} className="group hover:bg-emerald-50/70">
+                              <td className="w-28 px-4 py-2.5 tabular-nums text-xs font-medium text-emerald-900/85">{row.date}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-sm font-bold text-emerald-950">
+                                {fmtNum(row.views)}<span className="ml-1 text-xs font-semibold text-emerald-600/90">회</span>
+                              </td>
+                              <td className="w-8 px-2 py-2 text-right">
+                                <button onClick={() => deleteOrganic('blog', row.date)} className="text-emerald-400 hover:text-emerald-800 opacity-0 group-hover:opacity-100" type="button" title="삭제">
                                   <X size={12} />
                                 </button>
                               </td>
@@ -928,28 +1204,37 @@ export default function Dashboard() {
                 </div>
 
                 {/* 링크드인 */}
-                <div className="border border-neutral-200 rounded-xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-white">
+                <div className="overflow-hidden rounded-xl border-2 border-blue-200 bg-blue-50/40 shadow-sm shadow-blue-900/[0.03]">
+                  <div className="flex items-center justify-between border-b-2 border-blue-200 bg-blue-100/90 px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                      <span className="text-sm font-bold">링크드인</span>
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600 ring-2 ring-blue-300" />
+                      <span className="text-sm font-bold text-blue-950">링크드인</span>
                     </div>
-                    <span className="text-xs text-neutral-500 tabular-nums">{linkedin.length}일</span>
+                    <span className="tabular-nums text-xs font-semibold text-blue-800/90">{linkedin.length}일</span>
                   </div>
-                  <div className="max-h-[260px] overflow-y-auto">
+                  <div className="max-h-[260px] overflow-y-auto bg-white/80">
                     {linkedin.length === 0 ? (
-                      <div className="text-center py-8 text-sm text-neutral-400 px-4">
+                      <div className="px-4 py-8 text-center text-sm text-blue-700/60">
                         아직 기록 없음 —<br />위 폼에서 &apos;링크드인&apos; 선택 후 입력
                       </div>
                     ) : (
                       <table className="w-full text-sm">
-                        <tbody className="divide-y divide-neutral-100">
-                          {linkedin.slice(0, 40).map(b => (
-                            <tr key={b.date} className="hover:bg-neutral-50 group">
-                              <td className="px-4 py-2 tabular-nums text-xs text-neutral-600 w-28">{b.date}</td>
-                              <td className="px-4 py-2 tabular-nums font-semibold text-right">{fmtNum(b.views)}<span className="text-xs text-neutral-400 font-normal ml-1">회</span></td>
-                              <td className="px-2 py-2 w-8 text-right">
-                                <button onClick={() => deleteOrganic('linkedin', b.date)} className="text-neutral-400 hover:text-neutral-700 opacity-0 group-hover:opacity-100">
+                        <thead>
+                          <tr className="border-b border-blue-100 bg-blue-50/90 text-left text-[11px] font-bold uppercase tracking-wide text-blue-800">
+                            <th className="w-28 px-4 py-2">날짜</th>
+                            <th className="px-4 py-2 text-right">조회수</th>
+                            <th className="w-8 px-2 py-2" aria-label="삭제" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-blue-100">
+                          {linkedin.slice(0, 40).map(row => (
+                            <tr key={row.date} className="group hover:bg-blue-50/70">
+                              <td className="w-28 px-4 py-2.5 tabular-nums text-xs font-medium text-blue-900/85">{row.date}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-sm font-bold text-blue-950">
+                                {fmtNum(row.views)}<span className="ml-1 text-xs font-semibold text-blue-600/90">회</span>
+                              </td>
+                              <td className="w-8 px-2 py-2 text-right">
+                                <button onClick={() => deleteOrganic('linkedin', row.date)} className="text-blue-400 hover:text-blue-800 opacity-0 group-hover:opacity-100" type="button" title="삭제">
                                   <X size={12} />
                                 </button>
                               </td>
@@ -962,6 +1247,156 @@ export default function Dashboard() {
                 </div>
               </div>
             </Card>
+            </>
+            )}
+
+            {mainNav === 'conversion' && (
+            <>
+            <Card className="overflow-hidden p-6 md:p-7">
+              <SectionTitle>
+                인바운드 리드 (카리스 애드 · 유선 · 채널톡 · 총 전환수)
+              </SectionTitle>
+              <div className="h-64 w-full min-w-0">
+                {conversionChannelChartData.length === 0 ? (
+                  <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/80 text-sm text-slate-500">
+                    아래에서 숫자를 입력해 첫 행을 추가하면 그래프가 표시됩니다.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={conversionChannelChartData} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+                      <CartesianGrid stroke="#f1f5f9" strokeWidth={1} vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: '#64748b' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={conversionChannelChartData.length > 18 ? 1 : 0}
+                      />
+                      <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
+                      <Tooltip
+                        contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, padding: '8px 12px', boxShadow: '0 4px 12px rgb(15 23 42 / 0.06)' }}
+                        formatter={(v, name) => [fmtNum(v), name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="karisAd"
+                        name="카리스 애드"
+                        stroke={CC_LINE.karisAd.stroke}
+                        strokeWidth={2.25}
+                        dot={{ r: 4, fill: CC_LINE.karisAd.fill, stroke: '#fff', strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: CC_LINE.karisAd.fill, stroke: '#fff', strokeWidth: 2 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="phone"
+                        name="유선"
+                        stroke={CC_LINE.phone.stroke}
+                        strokeWidth={2.25}
+                        dot={{ r: 4, fill: CC_LINE.phone.fill, stroke: '#fff', strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: CC_LINE.phone.fill, stroke: '#fff', strokeWidth: 2 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="channelTalk"
+                        name="채널톡"
+                        stroke={CC_LINE.channelTalk.stroke}
+                        strokeWidth={2.25}
+                        dot={{ r: 4, fill: CC_LINE.channelTalk.fill, stroke: '#fff', strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: CC_LINE.channelTalk.fill, stroke: '#fff', strokeWidth: 2 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="total"
+                        name="총 전환수"
+                        stroke={CC_LINE.total.stroke}
+                        strokeWidth={3}
+                        dot={{ r: 4.5, fill: CC_LINE.total.fill, stroke: '#fff', strokeWidth: 2 }}
+                        activeDot={{ r: 7, fill: CC_LINE.total.fill, stroke: '#fff', strokeWidth: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-6">
+                {[
+                  { key: 'karisAd', label: '카리스 애드' },
+                  { key: 'phone', label: '유선' },
+                  { key: 'channelTalk', label: '채널톡' },
+                  { key: 'total', label: '총 전환수' },
+                ].map(({ key, label }) => (
+                  <div key={key} className="min-w-[5.5rem] flex-1">
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">{label}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={conversionInput[key]}
+                      onChange={e => setConversionInput(p => ({ ...p, [key]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') addConversionChannelRow(); }}
+                      placeholder="0"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-900"
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addConversionChannelRow}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+                >
+                  <Plus size={16} /> 행 추가
+                </button>
+              </div>
+
+              <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[480px] text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50/90 text-left text-xs font-semibold text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2.5">#</th>
+                      <th className="px-3 py-2.5">카리스 애드</th>
+                      <th className="px-3 py-2.5">유선</th>
+                      <th className="px-3 py-2.5">채널톡</th>
+                      <th className="px-3 py-2.5">총 전환수</th>
+                      <th className="w-10 px-2 py-2.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {conversionChannelRows.map((r, i) => (
+                      <tr key={r.id} className="group hover:bg-slate-50/80">
+                        <td className="px-3 py-2 tabular-nums text-xs text-slate-500">{String(i + 1).padStart(2, '0')}</td>
+                        <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{fmtNum(r.karisAd)}</td>
+                        <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{fmtNum(r.phone)}</td>
+                        <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{fmtNum(r.channelTalk)}</td>
+                        <td className="px-3 py-2 tabular-nums font-medium text-slate-900">{fmtNum(r.total)}</td>
+                        <td className="px-2 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => deleteConversionChannelRow(r.id)}
+                            className="rounded p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-800 group-hover:opacity-100"
+                            title="이 행 삭제"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {conversionChannelRows.length === 0 && (
+                  <div className="py-10 text-center text-sm text-slate-500">행이 없습니다.</div>
+                )}
+              </div>
+            </Card>
+            </>
+            )}
+          </div>
+
+          <footer className="mx-auto mt-8 w-full max-w-[960px] shrink-0 border-t border-slate-200 pt-6 text-xs text-slate-500 flex flex-wrap items-center justify-end">
+            <span className="tabular-nums">
+              리드 {fmtNum(leads.length)}곳 · 발송 {fmtNum(funnelCumulative.sent)} · 성사 {fmtNum(funnelCumulative.won)}
+            </span>
+          </footer>
         </div>
 
         {leadEdit && (
@@ -1039,12 +1474,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        <footer className="mt-10 flex flex-wrap items-center justify-end border-t border-slate-200 pt-6 text-xs text-slate-500">
-          <span className="tabular-nums">
-            리드 {fmtNum(leads.length)}곳 · 발송 {fmtNum(funnelCumulative.sent)} · 성사 {fmtNum(funnelCumulative.won)}
-          </span>
-        </footer>
       </main>
     </div>
   );

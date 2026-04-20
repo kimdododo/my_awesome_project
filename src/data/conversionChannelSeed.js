@@ -1,0 +1,22 @@
+/** 인바운드 리드 — 시트와 동일한 초기 행 (카리스 애드 · 유선 · 채널톡 · 총 전환수) */
+export const INITIAL_CONVERSION_CHANNEL_ROWS = [
+  { id: 'init-01', karisAd: 4, phone: 1, channelTalk: 1, total: 7 },
+  { id: 'init-02', karisAd: 3, phone: 1, channelTalk: 1, total: 9 },
+  { id: 'init-03', karisAd: 2, phone: 0, channelTalk: 0, total: 5 },
+  { id: 'init-04', karisAd: 2, phone: 0, channelTalk: 0, total: 6 },
+  { id: 'init-05', karisAd: 1, phone: 1, channelTalk: 1, total: 6 },
+  { id: 'init-06', karisAd: 2, phone: 1, channelTalk: 0, total: 3 },
+  { id: 'init-07', karisAd: 3, phone: 0, channelTalk: 0, total: 8 },
+  { id: 'init-08', karisAd: 4, phone: 1, channelTalk: 1, total: 12 },
+  { id: 'init-09', karisAd: 2, phone: 0, channelTalk: 0, total: 4 },
+  { id: 'init-10', karisAd: 2, phone: 0, channelTalk: 0, total: 5 },
+  { id: 'init-11', karisAd: 2, phone: 0, channelTalk: 0, total: 2 },
+  { id: 'init-12', karisAd: 1, phone: 0, channelTalk: 1, total: 2 },
+  { id: 'init-13', karisAd: 3, phone: 0, channelTalk: 2, total: 8 },
+  { id: 'init-14', karisAd: 4, phone: 0, channelTalk: 1, total: 8 },
+  { id: 'init-15', karisAd: 5, phone: 0, channelTalk: 1, total: 11 },
+  { id: 'init-16', karisAd: 1, phone: 0, channelTalk: 0, total: 1 },
+  { id: 'init-17', karisAd: 2, phone: 0, channelTalk: 1, total: 6 },
+  { id: 'init-18', karisAd: 1, phone: 1, channelTalk: 0, total: 2 },
+  { id: 'init-19', karisAd: 7, phone: 1, channelTalk: 0, total: 11 },
+];

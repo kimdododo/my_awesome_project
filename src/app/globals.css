@@ -1,5 +1,5 @@
-@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+/* 폰트는 layout.jsx에서 <link>로 로드 — 번들 CSS 맨앞 @import 가
+   일부 브라우저/미리보기에서 메인 스타일시트 적용을 방해하는 경우를 피함 */
 
 @tailwind base;
 @tailwind components;
