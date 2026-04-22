@@ -31,9 +31,16 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local AI tooling settings
+.claude/settings.local.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
 # 이전 구조 `deploy/` 잔여 폴더(잠긴 node_modules 등) — 로컬에서 통째로 삭제해도 됨
 deploy/
+
+# import script outputs
+scripts/outputs/*
+!scripts/outputs/.gitkeep

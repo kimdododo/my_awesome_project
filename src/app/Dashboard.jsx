@@ -8,13 +8,15 @@ import {
 import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
   Cloud, CloudOff, Loader2, Trash2, X,
-  Pencil, ChevronRight,
+  Pencil, ChevronRight, Send,
   Kanban, Users, BookOpen, TrendingUp,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
 import { INITIAL_CONVERSION_CHANNEL_ROWS } from '../data/conversionChannelSeed';
 import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
 import { DAILY_AD_ANCHOR_DEFAULT } from '../lib/dailyAdsDates';
+import { track } from '../lib/tracking/client';
+import { renderColdEmail } from '../lib/email-template';
 
 /* ============================================================
    CONFIG
@@ -89,6 +91,36 @@ function cloneConversionChannelSeed() {
 }
 
 const LOCAL_BACKUP_KEY = 'kbeauty-dashboard:state:v1';
+const LOCAL_EVENT_BACKUP_KEY = 'kbeauty-dashboard:events:v1';
+
+function safeJsonStringify(v) {
+  try { return JSON.stringify(v); } catch { return ''; }
+}
+async function trackEvent(name, props = {}) {
+  const evt = {
+    name,
+    props,
+    ts: new Date().toISOString(),
+    path: typeof window !== 'undefined' ? window.location.pathname : '/',
+  };
+
+  // Always keep local backup (for quick debugging / when KV is disconnected).
+  try {
+    const raw = window.localStorage.getItem(LOCAL_EVENT_BACKUP_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    const next = Array.isArray(arr) ? [...arr, evt].slice(-300) : [evt];
+    window.localStorage.setItem(LOCAL_EVENT_BACKUP_KEY, safeJsonStringify(next));
+  } catch {
+    // ignore
+  }
+
+  // Unified pipeline (UTM + sinks) — best-effort only.
+  try {
+    track(name, props, { legacy: { path: evt.path, ts: evt.ts } });
+  } catch {
+    // ignore
+  }
+}
 
 /** 콜드 리스트 단계 — 필터 칩·단계 선택기 공통 팔레트 (명도 대비 유지) */
 const STAGES = [
@@ -345,6 +377,167 @@ function StageSelector({ current, onChange }) {
   );
 }
 
+function stageNextAction(stageId) {
+  switch (stageId) {
+    case 'pending':
+      return { title: '첫 메일 발송', hint: '브랜드 담당자에게 1차 제안 메일을 보냅니다.' };
+    case 'sent':
+      return { title: '후속 메일(리마인드)', hint: 'D+2~3에 짧게 리마인드로 회신율을 끌어올립니다.' };
+    case 'replied':
+      return { title: '미팅 제안 보내기', hint: '가능 시간 2~3개 + 아젠다 3줄로 미팅 전환을 띄웁니다.' };
+    case 'meeting':
+      return { title: '오퍼/다음 스텝 확정', hint: '견적/패키지 + 마감일을 제시해 성사 확률을 올립니다.' };
+    case 'won':
+      return { title: '업셀 포인트 체크', hint: '재구매/확장 제안을 위한 성과 요약 3줄을 남깁니다.' };
+    default:
+      return { title: '다음 액션', hint: '' };
+  }
+}
+
+function buildEmailTemplate({ brand, stageId, countries = [], platform = '' }) {
+  const countryLine = countries?.length ? countries.join(', ') : '';
+  const intro = `안녕하세요 ${brand} 팀 담당자님,\n\nK-Beauty 브랜드의 SEA(동남아) 유통/광고 성과 개선을 돕는 Caris입니다.`;
+  const context = [
+    countryLine ? `- 타겟 국가: ${countryLine}` : null,
+    platform ? `- 현재/관심 플랫폼: ${platform}` : null,
+  ].filter(Boolean).join('\n');
+
+  if (stageId === 'pending') {
+    return {
+      subject: `[제안] ${brand} SEA 유통·광고 성과 개선 (15분 미팅)`,
+      body:
+        `${intro}\n\n` +
+        (context ? `${context}\n\n` : '') +
+        `간단히 15분만 시간 주시면,\n` +
+        `1) SEA 채널별 성장 포인트 1~2개\n` +
+        `2) 빠르게 테스트 가능한 액션(광고/입점/운영)\n` +
+        `을 브랜드 상황에 맞춰 제안드리겠습니다.\n\n` +
+        `이번 주 가능하신 시간대 2~3개만 공유해주실 수 있을까요?\n\n` +
+        `감사합니다.\nCaris 드림\n`,
+    };
+  }
+  if (stageId === 'sent') {
+    return {
+      subject: `[리마인드] ${brand} SEA 성과 개선 제안 드립니다`,
+      body:
+        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
+        `지난번에 SEA 유통/광고 성과 개선 관련해 짧게 제안드렸는데, 확인하셨을지 리마인드로 연락드립니다.\n` +
+        `가능하시다면 15분만 통화/미팅으로 현재 상황을 듣고 빠른 액션을 제안드리고 싶습니다.\n\n` +
+        `이번 주 가능 시간 2~3개만 회신 부탁드립니다.\n\n` +
+        `감사합니다.\nCaris 드림\n`,
+    };
+  }
+  if (stageId === 'replied') {
+    return {
+      subject: `[미팅 제안] ${brand} — 아젠다 공유드립니다`,
+      body:
+        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
+        `회신 감사합니다. 미팅은 15~20분이면 충분합니다.\n\n` +
+        `아젠다(초안)\n` +
+        `- 현재 SEA 채널 운영 현황(2~3분)\n` +
+        `- 빠르게 개선 가능한 레버 2개(광고/입점/운영)\n` +
+        `- 다음 액션과 일정\n\n` +
+        `가능하신 시간 후보 2~3개와, 선호하시는 미팅 방식(Zoom/Google Meet) 알려주시면 바로 잡아드리겠습니다.\n\n` +
+        `감사합니다.\nCaris 드림\n`,
+    };
+  }
+  if (stageId === 'meeting') {
+    return {
+      subject: `[다음 스텝] ${brand} — 실행안/오퍼 공유`,
+      body:
+        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
+        `미팅 감사합니다. 논의 내용을 바탕으로 실행안/오퍼(초안)를 공유드립니다.\n` +
+        `- 1차 목표: (예) 전환/리드 개선, 입점 준비\n` +
+        `- 2주 내 실행 항목: (예) 캠페인 구조/크리에이티브 테스트\n` +
+        `- 필요한 자료: (예) SKU/마진/현재 광고 데이터)\n\n` +
+        `가능하시면 이번 주 내로 “진행 여부”만 먼저 확정해주시면, 다음 단계(자료/세팅)를 바로 시작하겠습니다.\n\n` +
+        `감사합니다.\nCaris 드림\n`,
+    };
+  }
+  return {
+    subject: `[Follow-up] ${brand}`,
+    body: `안녕하세요 ${brand} 팀 담당자님,\n\n감사합니다.\n`,
+  };
+}
+
+function QuickLeadActions({ lead, stageId, onSendClick }) {
+  const action = stageNextAction(stageId);
+  const hasEmail = Boolean(lead?.email?.trim());
+  const tmpl = buildEmailTemplate({
+    brand: lead.brand,
+    stageId,
+    countries: lead.countries,
+    platform: lead.platform,
+  });
+
+  const useSendFlow = stageId === 'pending' && Boolean(onSendClick);
+  const mailto = hasEmail
+    ? `mailto:${encodeURIComponent(lead.email.trim())}?subject=${encodeURIComponent(tmpl.subject)}&body=${encodeURIComponent(tmpl.body)}`
+    : '#';
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      {useSendFlow ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (!hasEmail) return;
+            trackEvent('cta_email_click', { brand: lead.brand, stageId, hasEmail: true });
+            onSendClick(lead);
+          }}
+          disabled={!hasEmail}
+          className={
+            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm ring-1 transition-all ' +
+            (hasEmail
+              ? 'bg-slate-900 text-white ring-slate-900/20 hover:bg-slate-800'
+              : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed')
+          }
+          title={hasEmail ? '콜드메일 미리보기 후 발송' : '이메일이 없어서 발송할 수 없습니다.'}
+        >
+          <Send size={12} /> {action.title}
+        </button>
+      ) : (
+        <a
+          href={mailto}
+          onClick={(e) => {
+            if (!hasEmail) {
+              e.preventDefault();
+              return;
+            }
+            trackEvent('cta_email_click', { brand: lead.brand, stageId, hasEmail: true });
+          }}
+          className={
+            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm ring-1 transition-all ' +
+            (hasEmail
+              ? 'bg-slate-900 text-white ring-slate-900/20 hover:bg-slate-800'
+              : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed')
+          }
+          title={hasEmail ? action.hint : '이메일이 없어서 바로 메일을 열 수 없습니다.'}
+          aria-disabled={!hasEmail}
+        >
+          {action.title}
+        </a>
+      )}
+      <button
+        type="button"
+        onClick={async () => {
+          const text = `Subject: ${tmpl.subject}\n\n${tmpl.body}`;
+          try {
+            await navigator.clipboard.writeText(text);
+            trackEvent('cta_copy_template', { brand: lead.brand, stageId });
+          } catch {
+            // ignore
+          }
+        }}
+        className="text-[11px] font-semibold text-slate-500 hover:text-slate-900"
+        title="메일 템플릿을 클립보드에 복사"
+      >
+        템플릿 복사
+      </button>
+    </div>
+  );
+}
+
 /* ============================================================
    MAIN
    ============================================================ */
@@ -382,6 +575,11 @@ export default function Dashboard() {
   const [showAddBrand, setShowAddBrand] = useState(false);
   const [newBrand, setNewBrand] = useState({ brand: '', countries: '', email: '', platform: '' });
   const [leadEdit, setLeadEdit] = useState(null);
+
+  // ─── Cold email send modal ───
+  const [sendPreview, setSendPreview] = useState(null); // { brand, email, subject, body } | null
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendError, setSendError] = useState(null);
 
   const [organicInput, setOrganicInput] = useState(() => ({
     source: 'blog', date: localISODate(), views: '',
@@ -494,9 +692,9 @@ export default function Dashboard() {
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!hasLoaded) return;
-    setSyncStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
+      setSyncStatus('saving');
       const payload = {
         leads, blog, linkedin, weeklyAdRows, brandStages, stageHistory,
         dailyAdRows, dailyAdsAnchor, conversionChannelRows,
@@ -551,6 +749,7 @@ export default function Dashboard() {
       setStageHistory([]);
       setConversionChannelRows(cloneConversionChannelSeed());
       setSyncStatus('saved');
+      trackEvent('reset_all_data', { date: todayStr });
     } catch (err) {
       alert('초기화 실패: ' + err.message);
     }
@@ -650,8 +849,40 @@ export default function Dashboard() {
      HANDLERS
      ──────────────────────────────────────────── */
   function setStage(brand, newStage) {
+    const prev = brandStages[brand]?.stage || 'pending';
     setBrandStages(p => ({ ...p, [brand]: { stage: newStage, updatedAt: todayStr } }));
     setStageHistory(p => [...p, { brand, stage: newStage, date: todayStr }]);
+    trackEvent('stage_changed', { brand, from: prev, to: newStage, date: todayStr });
+  }
+
+  function openSendPreview(lead) {
+    const email = lead?.email?.trim();
+    if (!email) return;
+    const { subject, body } = renderColdEmail(lead.brand);
+    setSendError(null);
+    setSendPreview({ brand: lead.brand, email, subject, body });
+  }
+
+  async function confirmSendEmail() {
+    if (!sendPreview || sendBusy) return;
+    setSendBusy(true);
+    setSendError(null);
+    try {
+      const resp = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand: sendPreview.brand, to: sendPreview.email }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json.error || `HTTP ${resp.status}`);
+      trackEvent('cold_email_sent', { brand: sendPreview.brand, messageId: json.messageId });
+      setStage(sendPreview.brand, 'sent');
+      setSendPreview(null);
+    } catch (err) {
+      setSendError(err.message || '알 수 없는 에러');
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   function saveLeadEdit() {
@@ -662,6 +893,7 @@ export default function Dashboard() {
         ? { ...l, priority: leadEdit.priority, countries, platform: leadEdit.platform.trim(), email: leadEdit.email.trim() }
         : l
     ));
+    trackEvent('lead_edited', { brand: leadEdit.brand });
     setLeadEdit(null);
   }
 
@@ -677,6 +909,7 @@ export default function Dashboard() {
       { brand: name, priority: 'NEW', countries, platform: newBrand.platform.trim(), email: newBrand.email.trim() },
       ...p,
     ]);
+    trackEvent('lead_added', { brand: name, hasEmail: Boolean(newBrand.email.trim()) });
     setNewBrand({ brand: '', countries: '', email: '', platform: '' });
     setShowAddBrand(false);
   }
@@ -685,6 +918,7 @@ export default function Dashboard() {
     if (!confirm(`"${name}"를 리스트에서 삭제하시겠어요?`)) return;
     setLeads(p => p.filter(l => l.brand !== name));
     setBrandStages(p => { const n = { ...p }; delete n[name]; return n; });
+    trackEvent('lead_deleted', { brand: name });
   }
 
   function addOrganic() {
@@ -703,11 +937,13 @@ export default function Dashboard() {
       });
     }
     setOrganicInput(p => ({ ...p, views: '' }));
+    trackEvent('organic_views_recorded', { source: organicInput.source, date: entry.date, views: entry.views });
   }
 
   function deleteOrganic(source, date) {
     if (source === 'blog') setBlog(p => p.filter(b => b.date !== date));
     else setLinkedin(p => p.filter(b => b.date !== date));
+    trackEvent('organic_views_deleted', { source, date });
   }
 
   function addConversionChannelRow() {
@@ -725,10 +961,18 @@ export default function Dashboard() {
       },
     ]);
     setConversionInput({ karisAd: '', phone: '', channelTalk: '', total: '' });
+    trackEvent('inbound_conversions_row_added', {
+      id,
+      karisAd: nonNegInt(conversionInput.karisAd),
+      phone: nonNegInt(conversionInput.phone),
+      channelTalk: nonNegInt(conversionInput.channelTalk),
+      total: nonNegInt(conversionInput.total),
+    });
   }
 
   function deleteConversionChannelRow(id) {
     setConversionChannelRows(p => p.filter(r => r.id !== id));
+    trackEvent('inbound_conversions_row_deleted', { id });
   }
 
   /* ────────────────────────────────────────────
@@ -742,10 +986,6 @@ export default function Dashboard() {
       return true;
     });
   }, [leads, brandStages, search, filterStage]);
-
-  useEffect(() => {
-    setOrganicInput(i => ({ ...i, date: i.date || todayStr }));
-  }, [todayStr]);
 
   /* ────────────────────────────────────────────
      RENDER
@@ -839,13 +1079,16 @@ export default function Dashboard() {
               <div className="flex items-start justify-between mb-5 gap-4">
                 <div>
                   <h2 className="text-xl font-bold">콜드 아웃바운드 리스트</h2>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    목표는 <span className="font-semibold text-neutral-800">다음 단계로 이동</span>입니다. 각 행의 CTA로 “다음 액션”을 바로 실행하세요.
+                  </p>
                 </div>
                 <button
                   onClick={() => setShowAddBrand(v => !v)}
                   className={'px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0 ' +
                     (showAddBrand ? 'bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50' : 'bg-white border border-neutral-900 text-neutral-900 hover:bg-neutral-50 shadow-sm')}
                 >
-                  {showAddBrand ? <><X size={16} /> 취소</> : <><Plus size={16} /> 브랜드 추가</>}
+                  {showAddBrand ? <><X size={16} /> 닫기</> : <><Plus size={16} /> 리드 추가</>}
                 </button>
               </div>
 
@@ -900,7 +1143,7 @@ export default function Dashboard() {
                       disabled={!newBrand.brand.trim()}
                       className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                     >
-                      리스트에 추가
+                      리드로 등록
                     </button>
                   </div>
                 </div>
@@ -961,6 +1204,7 @@ export default function Dashboard() {
                       <th className="w-14 px-4 py-3 text-left">등급</th>
                       <th className="px-5 py-3 text-left">국가</th>
                       <th className="min-w-[288px] whitespace-nowrap px-5 py-3 text-left">단계</th>
+                      <th className="px-4 py-3 text-right w-40">다음 액션</th>
                       <th className="text-right px-4 py-3 w-24">편집</th>
                       <th className="px-3 py-3 w-10" />
                     </tr>
@@ -1000,6 +1244,9 @@ export default function Dashboard() {
                           </td>
                           <td className="min-w-[288px] whitespace-nowrap px-5 py-3 align-middle">
                             <StageSelector current={current} onChange={(ns) => setStage(l.brand, ns)} />
+                          </td>
+                          <td className="px-4 py-3 text-right align-middle">
+                            <QuickLeadActions lead={l} stageId={current} onSendClick={openSendPreview} />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
@@ -1157,7 +1404,7 @@ export default function Dashboard() {
                   disabled={!organicInput.views || isNaN(parseInt(organicInput.views, 10))}
                   className="px-5 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-300 text-neutral-900 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
                 >
-                  <Plus size={16} /> 기록
+                  <Plus size={16} /> 조회수 기록
                 </button>
               </div>
 
@@ -1345,7 +1592,7 @@ export default function Dashboard() {
                   onClick={addConversionChannelRow}
                   className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
                 >
-                  <Plus size={16} /> 행 추가
+                  <Plus size={16} /> 전환 기록 추가
                 </button>
               </div>
 
@@ -1469,6 +1716,83 @@ export default function Dashboard() {
                   className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-neutral-900 text-neutral-900 hover:bg-neutral-50 shadow-sm"
                 >
                   저장
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {sendPreview && (
+          <div
+            className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-neutral-900/15 backdrop-blur-[2px]"
+            role="presentation"
+            onClick={() => !sendBusy && setSendPreview(null)}
+          >
+            <div
+              className="w-full sm:max-w-2xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-neutral-200 p-6 sm:p-7 max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="send-preview-title"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 id="send-preview-title" className="text-lg font-bold text-neutral-900">콜드메일 미리보기</h3>
+                  <p className="text-sm text-neutral-500 mt-1">{sendPreview.brand} · {sendPreview.email}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !sendBusy && setSendPreview(null)}
+                  disabled={sendBusy}
+                  className="p-1 text-neutral-400 hover:text-neutral-800 rounded disabled:opacity-40"
+                  title="닫기"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">From</div>
+                  <div className="text-sm text-neutral-800">Felix Kim &lt;felix@madsq.net&gt;</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">To</div>
+                  <div className="text-sm text-neutral-800">{sendPreview.email}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">Subject</div>
+                  <div className="text-sm font-semibold text-neutral-900">{sendPreview.subject}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-1">Body</div>
+                  <pre className="text-sm text-neutral-800 whitespace-pre-wrap font-sans bg-neutral-50 rounded-lg p-4 border border-neutral-200 max-h-80 overflow-y-auto">{sendPreview.body}</pre>
+                </div>
+              </div>
+
+              {sendError && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  발송 실패: {sendError}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => !sendBusy && setSendPreview(null)}
+                  disabled={sendBusy}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 hover:bg-neutral-50 border border-neutral-200 disabled:opacity-40"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSendEmail}
+                  disabled={sendBusy}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-900 text-white hover:bg-slate-800 shadow-sm disabled:opacity-50"
+                >
+                  {sendBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {sendBusy ? '발송 중...' : '발송'}
                 </button>
               </div>
             </div>
