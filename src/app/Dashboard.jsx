@@ -8,7 +8,7 @@ import {
 import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
   Cloud, CloudOff, Loader2, Trash2, X,
-  Pencil, ChevronRight, Send,
+  Pencil, ChevronRight, Send, Check,
   Kanban, Users, BookOpen, TrendingUp,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
@@ -377,162 +377,39 @@ function StageSelector({ current, onChange }) {
   );
 }
 
-function stageNextAction(stageId) {
-  switch (stageId) {
-    case 'pending':
-      return { title: '첫 메일 발송', hint: '브랜드 담당자에게 1차 제안 메일을 보냅니다.' };
-    case 'sent':
-      return { title: '후속 메일(리마인드)', hint: 'D+2~3에 짧게 리마인드로 회신율을 끌어올립니다.' };
-    case 'replied':
-      return { title: '미팅 제안 보내기', hint: '가능 시간 2~3개 + 아젠다 3줄로 미팅 전환을 띄웁니다.' };
-    case 'meeting':
-      return { title: '오퍼/다음 스텝 확정', hint: '견적/패키지 + 마감일을 제시해 성사 확률을 올립니다.' };
-    case 'won':
-      return { title: '업셀 포인트 체크', hint: '재구매/확장 제안을 위한 성과 요약 3줄을 남깁니다.' };
-    default:
-      return { title: '다음 액션', hint: '' };
-  }
-}
-
-function buildEmailTemplate({ brand, stageId, countries = [], platform = '' }) {
-  const countryLine = countries?.length ? countries.join(', ') : '';
-  const intro = `안녕하세요 ${brand} 팀 담당자님,\n\nK-Beauty 브랜드의 SEA(동남아) 유통/광고 성과 개선을 돕는 Caris입니다.`;
-  const context = [
-    countryLine ? `- 타겟 국가: ${countryLine}` : null,
-    platform ? `- 현재/관심 플랫폼: ${platform}` : null,
-  ].filter(Boolean).join('\n');
-
-  if (stageId === 'pending') {
-    return {
-      subject: `[제안] ${brand} SEA 유통·광고 성과 개선 (15분 미팅)`,
-      body:
-        `${intro}\n\n` +
-        (context ? `${context}\n\n` : '') +
-        `간단히 15분만 시간 주시면,\n` +
-        `1) SEA 채널별 성장 포인트 1~2개\n` +
-        `2) 빠르게 테스트 가능한 액션(광고/입점/운영)\n` +
-        `을 브랜드 상황에 맞춰 제안드리겠습니다.\n\n` +
-        `이번 주 가능하신 시간대 2~3개만 공유해주실 수 있을까요?\n\n` +
-        `감사합니다.\nCaris 드림\n`,
-    };
-  }
-  if (stageId === 'sent') {
-    return {
-      subject: `[리마인드] ${brand} SEA 성과 개선 제안 드립니다`,
-      body:
-        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
-        `지난번에 SEA 유통/광고 성과 개선 관련해 짧게 제안드렸는데, 확인하셨을지 리마인드로 연락드립니다.\n` +
-        `가능하시다면 15분만 통화/미팅으로 현재 상황을 듣고 빠른 액션을 제안드리고 싶습니다.\n\n` +
-        `이번 주 가능 시간 2~3개만 회신 부탁드립니다.\n\n` +
-        `감사합니다.\nCaris 드림\n`,
-    };
-  }
-  if (stageId === 'replied') {
-    return {
-      subject: `[미팅 제안] ${brand} — 아젠다 공유드립니다`,
-      body:
-        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
-        `회신 감사합니다. 미팅은 15~20분이면 충분합니다.\n\n` +
-        `아젠다(초안)\n` +
-        `- 현재 SEA 채널 운영 현황(2~3분)\n` +
-        `- 빠르게 개선 가능한 레버 2개(광고/입점/운영)\n` +
-        `- 다음 액션과 일정\n\n` +
-        `가능하신 시간 후보 2~3개와, 선호하시는 미팅 방식(Zoom/Google Meet) 알려주시면 바로 잡아드리겠습니다.\n\n` +
-        `감사합니다.\nCaris 드림\n`,
-    };
-  }
-  if (stageId === 'meeting') {
-    return {
-      subject: `[다음 스텝] ${brand} — 실행안/오퍼 공유`,
-      body:
-        `안녕하세요 ${brand} 팀 담당자님,\n\n` +
-        `미팅 감사합니다. 논의 내용을 바탕으로 실행안/오퍼(초안)를 공유드립니다.\n` +
-        `- 1차 목표: (예) 전환/리드 개선, 입점 준비\n` +
-        `- 2주 내 실행 항목: (예) 캠페인 구조/크리에이티브 테스트\n` +
-        `- 필요한 자료: (예) SKU/마진/현재 광고 데이터)\n\n` +
-        `가능하시면 이번 주 내로 “진행 여부”만 먼저 확정해주시면, 다음 단계(자료/세팅)를 바로 시작하겠습니다.\n\n` +
-        `감사합니다.\nCaris 드림\n`,
-    };
-  }
-  return {
-    subject: `[Follow-up] ${brand}`,
-    body: `안녕하세요 ${brand} 팀 담당자님,\n\n감사합니다.\n`,
-  };
-}
-
 function QuickLeadActions({ lead, stageId, onSendClick }) {
-  const action = stageNextAction(stageId);
   const hasEmail = Boolean(lead?.email?.trim());
-  const tmpl = buildEmailTemplate({
-    brand: lead.brand,
-    stageId,
-    countries: lead.countries,
-    platform: lead.platform,
-  });
 
-  const useSendFlow = stageId === 'pending' && Boolean(onSendClick);
-  const mailto = hasEmail
-    ? `mailto:${encodeURIComponent(lead.email.trim())}?subject=${encodeURIComponent(tmpl.subject)}&body=${encodeURIComponent(tmpl.body)}`
-    : '#';
+  // pending 외 단계는 '메일발송완료' 라벨만 노출 — 후속 액션은 수동 처리
+  if (stageId !== 'pending') {
+    return (
+      <div className="flex justify-end">
+        <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 ring-1 ring-slate-200">
+          <Check size={12} /> 메일발송완료
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      {useSendFlow ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (!hasEmail) return;
-            trackEvent('cta_email_click', { brand: lead.brand, stageId, hasEmail: true });
-            onSendClick(lead);
-          }}
-          disabled={!hasEmail}
-          className={
-            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm ring-1 transition-all ' +
-            (hasEmail
-              ? 'bg-slate-900 text-white ring-slate-900/20 hover:bg-slate-800'
-              : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed')
-          }
-          title={hasEmail ? '콜드메일 미리보기 후 발송' : '이메일이 없어서 발송할 수 없습니다.'}
-        >
-          <Send size={12} /> {action.title}
-        </button>
-      ) : (
-        <a
-          href={mailto}
-          onClick={(e) => {
-            if (!hasEmail) {
-              e.preventDefault();
-              return;
-            }
-            trackEvent('cta_email_click', { brand: lead.brand, stageId, hasEmail: true });
-          }}
-          className={
-            'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm ring-1 transition-all ' +
-            (hasEmail
-              ? 'bg-slate-900 text-white ring-slate-900/20 hover:bg-slate-800'
-              : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed')
-          }
-          title={hasEmail ? action.hint : '이메일이 없어서 바로 메일을 열 수 없습니다.'}
-          aria-disabled={!hasEmail}
-        >
-          {action.title}
-        </a>
-      )}
+    <div className="flex justify-end">
       <button
         type="button"
-        onClick={async () => {
-          const text = `Subject: ${tmpl.subject}\n\n${tmpl.body}`;
-          try {
-            await navigator.clipboard.writeText(text);
-            trackEvent('cta_copy_template', { brand: lead.brand, stageId });
-          } catch {
-            // ignore
-          }
+        onClick={() => {
+          if (!hasEmail) return;
+          trackEvent('cta_email_click', { brand: lead.brand, stageId, hasEmail: true });
+          onSendClick?.(lead);
         }}
-        className="text-[11px] font-semibold text-slate-500 hover:text-slate-900"
-        title="메일 템플릿을 클립보드에 복사"
+        disabled={!hasEmail}
+        className={
+          'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm ring-1 transition-all ' +
+          (hasEmail
+            ? 'bg-slate-900 text-white ring-slate-900/20 hover:bg-slate-800'
+            : 'bg-slate-100 text-slate-400 ring-slate-200 cursor-not-allowed')
+        }
+        title={hasEmail ? '콜드메일 미리보기 후 발송' : '이메일이 없어서 발송할 수 없습니다.'}
       >
-        템플릿 복사
+        <Send size={12} /> 첫 메일 발송
       </button>
     </div>
   );

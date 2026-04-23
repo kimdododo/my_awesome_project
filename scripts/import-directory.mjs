@@ -6,11 +6,21 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { chromium } from 'playwright';
+
 import { scrapeOliveYoung } from './sources/oliveyoung.mjs';
 import { scrapeInterCharm } from './sources/intercharm.mjs';
+import { scrapeSilicon2 } from './sources/silicon2.mjs';
+import { scrapeCosmoprofCbe } from './sources/cosmoprofCbe.mjs';
+import { collectEmailsForBrands } from './lib/emailCrawl.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SOURCES = { oliveyoung: scrapeOliveYoung, intercharm: scrapeInterCharm };
+const SOURCES = {
+  oliveyoung: scrapeOliveYoung,
+  intercharm: scrapeInterCharm,
+  silicon2: scrapeSilicon2,
+  cosmoprofCbe: scrapeCosmoprofCbe,
+};
 const MODEL = 'claude-sonnet-4-6';
 
 // Load env vars from .env.local (preferred) or .env
@@ -19,9 +29,10 @@ const envPath = resolve(__dirname, '../.env');
 dotenv.config({ path: existsSync(envLocalPath) ? envLocalPath : envPath });
 
 function parseArgs(argv) {
-  const args = { sources: [], debug: false };
+  const args = { sources: [], debug: false, withEmails: false };
   for (const a of argv.slice(2)) {
     if (a === '--debug') args.debug = true;
+    else if (a === '--with-emails') args.withEmails = true;
     else if (a === 'all') args.sources = Object.keys(SOURCES);
     else if (SOURCES[a]) args.sources.push(a);
     else console.warn(`⚠️  알 수 없는 인자 무시: ${a}`);
@@ -152,14 +163,17 @@ async function normalizeWithClaude(client, args) {
 }
 
 async function main() {
-  const { sources, debug } = parseArgs(process.argv);
+  const { sources, debug, withEmails } = parseArgs(process.argv);
 
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error('❌ ANTHROPIC_API_KEY가 .env.local에 설정되지 않았습니다.');
     process.exit(1);
   }
 
-  console.log(`🎯 소스: ${sources.join(', ')}${debug ? ' (debug)' : ''}\n`);
+  console.log(
+    `🎯 소스: ${sources.join(', ')}${debug ? ' (debug)' : ''}` +
+      `${withEmails ? ' [이메일 필수 필터링 ON]' : ''}\n`
+  );
 
   console.log('📚 기존 brands 로딩...');
   const existingNames = await loadExistingBrands();
@@ -233,23 +247,58 @@ async function main() {
     });
   }
 
+  // 이메일 필수 필터링 (SEA 타게팅 파이프라인에서는 이메일 없으면 가치 없음)
+  let finalBrands = allNew;
+  let emailStats = null;
+  if (withEmails && allNew.length > 0) {
+    console.log('\n📧 신규 브랜드 이메일 수집 + 필수 필터링...');
+    const brandNames = [...new Set(allNew.map((b) => b.b))];
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const { emailMap, stats } = await collectEmailsForBrands(client, browser, brandNames);
+      emailStats = stats;
+      finalBrands = allNew
+        .map((b) => {
+          const email = emailMap.get(b.b);
+          return email ? { ...b, e: email } : null;
+        })
+        .filter(Boolean);
+    } finally {
+      await browser.close();
+    }
+    console.log(
+      `  ✨ 이메일 보유 브랜드만 유지: ${finalBrands.length}/${allNew.length} ` +
+        `(이메일 찾음 ${emailStats.found}, 홈페이지 불명 ${emailStats.noHomepage}, 이메일 없음 ${emailStats.noEmail})\n`
+    );
+  }
+
   const outputDir = resolve(__dirname, 'outputs');
   await mkdir(outputDir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const outPath = resolve(outputDir, `new-brands-${ts}.json`);
   await writeFile(
     outPath,
-    JSON.stringify({ generatedAt: new Date().toISOString(), summary, brands: allNew }, null, 2),
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        summary,
+        emailStats,
+        brands: finalBrands,
+        ...(withEmails ? { droppedWithoutEmail: allNew.length - finalBrands.length } : {}),
+      },
+      null,
+      2
+    ),
     'utf8'
   );
 
   console.log('═'.repeat(60));
-  console.log(`✨ 완료! 신규 브랜드 합계: ${allNew.length}개`);
+  console.log(`✨ 완료! 신규 브랜드 합계: ${finalBrands.length}개`);
+  if (withEmails) console.log(`   (이메일 없어 제거: ${allNew.length - finalBrands.length}개)`);
   console.log(`📄 ${outPath}`);
   console.log('\n다음 단계:');
   console.log('  1. 위 파일 열어서 brands 배열 검토');
   console.log('  2. 마음에 드는 항목만 골라 src/data/seed.js 의 "l" 배열에 추가');
-  console.log('  3. 또는 전체를 추가하려면 JSON.parse(...)로 머지');
 }
 
 main().catch((err) => {
