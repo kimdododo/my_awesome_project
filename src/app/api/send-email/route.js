@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { sendGmail } from '@/lib/gmail';
 import { renderColdEmail } from '@/lib/email-template';
+import { appendBrandEvent, buildBrandEvent } from '@/lib/brandEvents';
 
 export const runtime = 'nodejs';
 
@@ -35,6 +36,23 @@ export async function POST(req) {
     const { subject, body } = renderColdEmail(brand);
     const attachment = await loadAttachment(req);
     const result = await sendGmail({ to: to.trim(), subject, body, attachment });
+
+    // 학습 데이터 적재 (실패해도 발송은 성공으로 처리)
+    try {
+      await appendBrandEvent(buildBrandEvent({
+        brand,
+        type: 'send',
+        source: 'gmail',
+        payload: {
+          to: to.trim(),
+          subject,
+          messageId: result.id,
+          threadId: result.threadId,
+        },
+      }));
+    } catch (logErr) {
+      console.error('[send-email] brand-event 적재 실패:', logErr?.message);
+    }
 
     return NextResponse.json({ ok: true, messageId: result.id, threadId: result.threadId });
   } catch (err) {

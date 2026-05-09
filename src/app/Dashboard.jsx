@@ -9,7 +9,7 @@ import {
   Plus, ArrowUpRight, ArrowDownRight, Minus, Search,
   Cloud, CloudOff, Loader2, Trash2, X,
   Pencil, ChevronRight, Send, Check,
-  Kanban, Users, BookOpen, TrendingUp,
+  Kanban, Users, BookOpen, TrendingUp, LayoutGrid,
 } from 'lucide-react';
 import { SEED } from '../data/seed';
 import { INITIAL_CONVERSION_CHANNEL_ROWS } from '../data/conversionChannelSeed';
@@ -17,6 +17,7 @@ import { INITIAL_WEEKLY_AD_ROWS } from '../data/weeklyAdsSeed';
 import { DAILY_AD_ANCHOR_DEFAULT } from '../lib/dailyAdsDates';
 import { track } from '../lib/tracking/client';
 import { renderColdEmail } from '../lib/email-template';
+import BrandGrid from './BrandGrid';
 
 /* ============================================================
    CONFIG
@@ -282,6 +283,7 @@ function SectionTitle({ children, right }) {
 
 const MAIN_NAV = [
   { id: 'pipeline', label: '콜드 파이프라인', short: '파이프라인', Icon: Kanban },
+  { id: 'grid', label: '브랜드 그리드', short: '그리드', Icon: LayoutGrid },
   { id: 'leads', label: '아웃바운드 리드', short: '리드', Icon: Users },
   { id: 'organic', label: '오가닉', short: '오가닉', Icon: BookOpen },
   { id: 'conversion', label: '인바운드 리드', short: '인바운드 리드', Icon: TrendingUp },
@@ -446,6 +448,9 @@ export default function Dashboard() {
   const [brandStages, setBrandStages] = useState({});
   const [stageHistory, setStageHistory] = useState([]);
 
+  // ─── Brand events (ML 학습 원료) ───
+  const [brandEvents, setBrandEvents] = useState([]);
+
   // ─── UI state ───
   const [search, setSearch] = useState('');
   const [filterStage, setFilterStage] = useState('all');
@@ -563,6 +568,26 @@ export default function Dashboard() {
       }
     }
     load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Brand events (ML 학습 원료) 초기 로드 — 그리드의 점수 신호로 사용
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/brand-events?limit=2000');
+        if (cancelled) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.ok && Array.isArray(data.events)) {
+          setBrandEvents(data.events);
+        }
+      } catch {
+        // 네트워크 실패 — 빈 배열 유지
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -725,11 +750,34 @@ export default function Dashboard() {
   /* ────────────────────────────────────────────
      HANDLERS
      ──────────────────────────────────────────── */
+
+  // Brand event 적재 (ML 원료) — POST /api/brand-events 후 로컬 캐시 갱신.
+  // 실패해도 UI 흐름은 막지 않음.
+  async function postBrandEvent({ brand, type, payload, source = 'dashboard' }) {
+    const optimistic = {
+      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ts: new Date().toISOString(),
+      brand, type, payload: payload || {}, source,
+    };
+    setBrandEvents(p => [...p, optimistic]);
+    try {
+      await fetch('/api/brand-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand, type, payload, source }),
+        keepalive: true,
+      });
+    } catch {
+      // 네트워크 실패 — optimistic 캐시는 유지
+    }
+  }
+
   function setStage(brand, newStage) {
     const prev = brandStages[brand]?.stage || 'pending';
     setBrandStages(p => ({ ...p, [brand]: { stage: newStage, updatedAt: todayStr } }));
     setStageHistory(p => [...p, { brand, stage: newStage, date: todayStr }]);
     trackEvent('stage_changed', { brand, from: prev, to: newStage, date: todayStr });
+    postBrandEvent({ brand, type: 'stage_change', payload: { from: prev, to: newStage } });
   }
 
   function openSendPreview(lead) {
@@ -753,6 +801,16 @@ export default function Dashboard() {
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json.error || `HTTP ${resp.status}`);
       trackEvent('cold_email_sent', { brand: sendPreview.brand, messageId: json.messageId });
+      // 서버가 send-email 라우트에서 이미 brand-event를 적재했지만,
+      // 그리드의 휴리스틱 점수가 즉시 반영되도록 클라이언트 캐시에도 추가
+      setBrandEvents(p => [...p, {
+        id: `local_send_${Date.now()}`,
+        ts: new Date().toISOString(),
+        brand: sendPreview.brand,
+        type: 'send',
+        payload: { messageId: json.messageId, to: sendPreview.email },
+        source: 'gmail',
+      }]);
       setStage(sendPreview.brand, 'sent');
       setSendPreview(null);
     } catch (err) {
@@ -948,6 +1006,24 @@ export default function Dashboard() {
               </div>
             </Card>
             </>
+            )}
+
+            {mainNav === 'grid' && (
+            <Card className="p-6 md:p-7">
+              <SectionTitle>
+                브랜드 그리드 — 휴리스틱 점수
+              </SectionTitle>
+              <p className="mb-4 text-xs text-slate-500">
+                각 칸은 1개 브랜드 · 색은 단계 · 우상단 숫자는 휴리스틱 점수(0–100). 클릭하면 점수 근거와 단계 변경 UI가 열립니다.
+                점수는 룰 기반 baseline이며, 데이터가 누적되면 ML 모델이 이걸 대체합니다.
+              </p>
+              <BrandGrid
+                leads={leads}
+                brandStages={brandStages}
+                events={brandEvents}
+                onChangeStage={setStage}
+              />
+            </Card>
             )}
 
             {mainNav === 'leads' && (
